@@ -18,7 +18,7 @@
     "expo": "~53.0.20",
     "expo-font": "^13.0.0",
     "expo-image-picker": "~16.1.4",
-    "expo-tracking-transparency": "~5.0.4",
+    "expo-tracking-transparency": "5.2.2",
     "expo-notifications": "~0.31.4",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
