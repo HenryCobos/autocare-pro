@@ -26,8 +26,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Esta aplicación necesita acceso a la cámara para tomar fotos de facturas y mantenimientos.",
         "NSPhotoLibraryUsageDescription": "Esta aplicación necesita acceso a la galería para seleccionar fotos de facturas y mantenimientos.",
-        "NSCalendarsUsageDescription": "Esta aplicación necesita acceso al calendario para programar recordatorios de mantenimiento.",
-        "NSRemindersUsageDescription": "Esta aplicación necesita acceso a recordatorios para notificar sobre mantenimientos programados."
+        "NSUserTrackingUsageDescription": "Esta aplicación utiliza identificadores del dispositivo para mostrar anuncios personalizados y medir su rendimiento."
       },
       "requireFullScreen": false
     },
@@ -37,18 +36,12 @@
         "backgroundColor": "#1E88E5"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.autocare.pro",
-      "permissions": [
-        "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR",
-        "android.permission.RECORD_AUDIO"
-      ]
+      "package": "com.autocare.pro"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-calendar",
       [
         "expo-image-picker",
         {

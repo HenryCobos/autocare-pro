@@ -13,6 +13,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 
 // Hooks
 import { useNotifications } from './src/hooks/useNotifications';
+import { useTrackingTransparency } from './src/hooks/useTracking';
 
 // Colores
 import { Colors } from './src/constants/Colors';
@@ -26,6 +27,8 @@ export default function App() {
   ]);
   // Inicializar notificaciones
   useNotifications();
+  // Solicitar ATT en iOS
+  useTrackingTransparency();
 
   return (
     <SafeAreaProvider>
