@@ -1,20 +1,45 @@
+import 'react-native-gesture-handler';
+/**
+ * AutoCare Pro - Aplicación de gestión de mantenimiento vehicular
+ * Desarrollada con React Native y Expo
+ */
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View, LogBox } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+// Navegación
+import AppNavigator from './src/navigation/AppNavigator';
+
+// Hooks
+import { useNotifications } from './src/hooks/useNotifications';
+
+// Colores
+import { Colors } from './src/constants/Colors';
 
 export default function App() {
+  // Ignorar warnings no críticos que podrían cerrar en release si se tratan como errores
+  LogBox.ignoreLogs([
+    'new NativeEventEmitter',
+    'expo-notifications',
+    'RNGoogleMobileAds',
+  ]);
+  // Inicializar notificaciones
+  useNotifications();
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <StatusBar style="light" backgroundColor={Colors.primary} />
+        <AppNavigator />
+      </View>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.background,
   },
 });

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soporte – AutoCare Pro</title>
+    <meta name="description" content="Soporte y contacto de AutoCare Pro." />
+    <style>
+      :root { --primary:#1E88E5; --text:#333; --muted:#666; --bg:#fff; --border:#e5e7eb; }
+      html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+      .container{max-width:860px;margin:0 auto;padding:24px}
+      header{margin-bottom:24px}
+      h1{font-size:28px;margin:0 0 8px}
+      p{line-height:1.6}
+      .card{border:1px solid var(--border);border-radius:12px;padding:16px;background:#fff}
+      a{color:var(--primary);text-decoration:none}
+      a:hover{text-decoration:underline}
+      footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:14px}
+      .links a{display:inline-block;margin-right:12px}
+      .hint{color:var(--muted);font-size:14px}
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Soporte – AutoCare Pro</h1>
+      </header>
+
+      <section class="card">
+        <p>¿Necesitas ayuda con la app? Escríbenos y con gusto te apoyamos.</p>
+        <p><strong>Email:</strong> <a href="mailto:soporte@autocarepro.app">soporte@autocarepro.app</a></p>
+        <p class="hint">Atendemos consultas de lunes a viernes en horario laboral (UTC-6). Incluye detalles de tu dispositivo y los pasos para reproducir el problema.</p>
+
+        <h2>Recursos</h2>
+        <div class="links">
+          <a href="./privacy.html">Política de Privacidad</a>
+          <a href="./terms.html">Términos de Uso</a>
+        </div>
+      </section>
+
+      <footer>© <span id="year"></span> AutoCare Pro. Todos los derechos reservados.</footer>
+    </main>
+    <script>
+      document.getElementById('year').textContent = String(new Date().getFullYear());
+    </script>
+  </body>
+  </html>
+
+

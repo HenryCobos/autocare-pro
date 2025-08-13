@@ -1,0 +1,44 @@
+{
+  "cli": {
+    "version": ">= 16.17.4",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "EXPO_PUBLIC_ADMOB_TEST_MODE": "true"
+      }
+    },
+    "testing": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "EXPO_PUBLIC_ADMOB_TEST_MODE": "true",
+        "EXPO_PUBLIC_ADS_BANNER_ID": "ca-app-pub-4349408589058649/4558346974",
+        "EXPO_PUBLIC_ADS_INTERSTITIAL_ID": "ca-app-pub-4349408589058649/9697594219"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ADS_BANNER_ID": "ca-app-pub-4349408589058649/4558346974",
+        "EXPO_PUBLIC_ADS_INTERSTITIAL_ID": "ca-app-pub-4349408589058649/9697594219"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

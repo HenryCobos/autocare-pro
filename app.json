@@ -1,29 +1,78 @@
 {
   "expo": {
-    "name": "autocare-pro",
+    "name": "AutoCare Pro",
     "slug": "autocare-pro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1E88E5"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.autocare.pro",
+      "buildNumber": "1.0.0",
+      "config": {
+        "googleMobileAdsAppId": "ca-app-pub-4349408589058649~5376604621",
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "Esta aplicación necesita acceso a la cámara para tomar fotos de facturas y mantenimientos.",
+        "NSPhotoLibraryUsageDescription": "Esta aplicación necesita acceso a la galería para seleccionar fotos de facturas y mantenimientos.",
+        "NSCalendarsUsageDescription": "Esta aplicación necesita acceso al calendario para programar recordatorios de mantenimiento.",
+        "NSRemindersUsageDescription": "Esta aplicación necesita acceso a recordatorios para notificar sobre mantenimientos programados."
+      },
+      "requireFullScreen": false
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1E88E5"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.autocare.pro",
+      "permissions": [
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-calendar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "La aplicación accede a tus fotos para permitirte adjuntar imágenes de facturas y mantenimientos.",
+          "cameraPermission": "La aplicación accede a tu cámara para permitirte tomar fotos de facturas y mantenimientos."
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "ios_app_id": "ca-app-pub-4349408589058649~5376604621",
+          "android_app_id": "ca-app-pub-4349408589058649~5376604621",
+          "user_tracking_usage_description": "Esta aplicación utiliza datos para mostrar anuncios personalizados."
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#1E88E5"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4bd7700f-bd3a-4bb2-bfc3-4178a4380082"
+      }
     }
   }
 }

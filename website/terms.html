@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Términos de Uso – AutoCare Pro</title>
+    <meta name="description" content="Términos y Condiciones de AutoCare Pro (iOS)." />
+    <style>
+      :root { --primary:#1E88E5; --text:#333; --muted:#666; --bg:#fff; --border:#e5e7eb; }
+      html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+      .container{max-width:860px;margin:0 auto;padding:24px}
+      header{margin-bottom:24px}
+      h1{font-size:28px;margin:0 0 8px}
+      .sub{color:var(--muted);font-size:14px}
+      h2{font-size:20px;margin-top:28px}
+      p,li{line-height:1.6}
+      .card{border:1px solid var(--border);border-radius:12px;padding:16px;background:#fff}
+      a{color:var(--primary);text-decoration:none}
+      a:hover{text-decoration:underline}
+      footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:14px}
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Términos y Condiciones de Uso – AutoCare Pro (iOS)</h1>
+        <div class="sub">Fecha de entrada en vigor: <strong id="date">[dd/mm/aaaa]</strong></div>
+      </header>
+
+      <section class="card">
+        <h2>1) Aceptación</h2>
+        <p>Al descargar o utilizar AutoCare Pro, aceptas estos Términos. Si no estás de acuerdo, no uses la app.</p>
+
+        <h2>2) Servicio</h2>
+        <p>AutoCare Pro ayuda a gestionar mantenimientos, gastos y recordatorios de vehículos. La app funciona localmente y puede mostrar anuncios (AdMob) cumpliendo las políticas vigentes.</p>
+
+        <h2>3) Uso adecuado</h2>
+        <ul>
+          <li>No uses la app para fines ilegales o que vulneren derechos de terceros.</li>
+          <li>Eres responsable del contenido que ingresas (exactitud, licitud, derechos de imagen en fotos).</li>
+        </ul>
+
+        <h2>4) Contenido e imágenes</h2>
+        <p>El contenido que subas permanece en tu dispositivo. No nos haces responsable por pérdidas de datos locales (p. ej., si desinstalas la app sin copia de seguridad).</p>
+
+        <h2>5) Notificaciones</h2>
+        <p>La app puede solicitar permisos para enviar notificaciones locales de recordatorios. Puedes desactivarlas desde Ajustes del sistema.</p>
+        
+        <h2>6) Publicidad</h2>
+        <p>Mostramos anuncios de Google AdMob. La publicidad no debe interferir indebidamente con la experiencia del usuario. Puedes limitar seguimiento publicitario en iOS.</p>
+
+        <h2>7) Propiedad intelectual</h2>
+        <p>AutoCare Pro y sus elementos (marcas, UI, código) son propiedad de sus titulares y están protegidos por derechos de propiedad intelectual. Queda prohibida su copia o distribución no autorizada.</p>
+        
+        <h2>8) Limitación de responsabilidad</h2>
+        <p>La app se proporciona “tal cual”. No garantizamos que esté libre de errores o interrupciones. No nos hacemos responsables de daños indirectos o pérdidas de datos derivadas del uso de la app.</p>
+
+        <h2>9) Cambios y mantenimiento</h2>
+        <p>Podemos actualizar, modificar o retirar funcionalidades sin previo aviso para mejorar la app o cumplir requisitos legales.</p>
+
+        <h2>10) Terminación</h2>
+        <p>Podemos suspender el acceso si incumples estos Términos o si es necesario por razones técnicas/legales. Puedes dejar de usar la app y desinstalarla en cualquier momento.</p>
+
+        <h2>11) Legislación aplicable</h2>
+        <p>Estos Términos se interpretan conforme a las leyes aplicables en tu país/región. Cualquier disputa se resolverá ante los tribunales competentes.</p>
+
+        <h2>12) Contacto</h2>
+        <p>Para consultas: <a href="mailto:soporte@autocarepro.app">soporte@autocarepro.app</a></p>
+      </section>
+
+      <footer>© <span id="year"></span> AutoCare Pro. Todos los derechos reservados.</footer>
+    </main>
+    <script>
+      const y = new Date();
+      document.getElementById('year').textContent = String(y.getFullYear());
+      // document.getElementById('date').textContent = y.toLocaleDateString('es-ES');
+    </script>
+  </body>
+  </html>
+
+
