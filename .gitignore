@@ -35,3 +35,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Proyectos locales aparte (repos propios, no parte de autocare-pro)
+documentos-legales-autocare-pro/
+henrycobos.github.io/
