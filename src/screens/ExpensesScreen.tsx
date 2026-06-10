@@ -18,29 +18,45 @@ import { Expense, Vehicle } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import {
   formatDate,
-  formatCurrency,
   getExpenseTypeName,
   getExpenseTypeIcon,
   groupByMonth,
   getMonthName,
 } from '../utils/helpers';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { useCurrency } from '../hooks/useCurrency';
 
 // Componentes
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import ExpenseChart from '../components/charts/ExpenseChart';
-import BannerAd from '../components/ads/BannerAd';
+import UpgradeModal from '../components/subscription/UpgradeModal';
 
 interface ExpensesScreenProps {
   navigation: any;
 }
 
 const ExpensesScreen: React.FC<ExpensesScreenProps> = ({ navigation }) => {
+  const { canAdd, getLimit } = useSubscription();
+  const { formatCurrency, refreshCurrency } = useCurrency();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<string>('all');
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  // Contar gastos del mes actual
+  const getExpensesThisMonth = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return expenses.filter(e => {
+      const date = new Date(e.date);
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    }).length;
+  };
 
   // Cargar datos
   const loadData = async () => {
@@ -105,11 +121,34 @@ const ExpensesScreen: React.FC<ExpensesScreenProps> = ({ navigation }) => {
     );
   };
 
+  // Manejar agregar gasto con verificación de límite
+  const handleAddExpense = () => {
+    const expensesThisMonth = getExpensesThisMonth();
+    
+    if (!canAdd('expenses', expensesThisMonth)) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    navigation.navigate('AddEditExpense');
+  };
+
+  // Manejar upgrade desde modal
+  const handleUpgrade = (plan: any) => {
+    setShowUpgradeModal(false);
+    navigation.navigate('Paywall', {
+      source: 'limit',
+      limitType: 'expenses',
+      preselectedPlan: plan,
+    });
+  };
+
   // Cargar datos al enfocar la pantalla
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+      refreshCurrency(); // Recargar moneda cuando la pantalla recibe foco
+    }, [refreshCurrency])
   );
 
   // Filtrar gastos por vehículo
@@ -215,7 +254,7 @@ const ExpensesScreen: React.FC<ExpensesScreenProps> = ({ navigation }) => {
         <Button
           title="Agregar Gasto"
           icon="add-outline"
-          onPress={() => navigation.navigate('AddEditExpense')}
+          onPress={handleAddExpense}
           style={styles.emptyButton}
         />
       ) : (
@@ -249,7 +288,6 @@ const ExpensesScreen: React.FC<ExpensesScreenProps> = ({ navigation }) => {
             type="line"
             title="Tendencia de Gastos Mensual"
           />
-          <BannerAd position="inline" />
           <ExpenseChart
             expenses={filteredExpenses}
             type="pie"
@@ -323,11 +361,20 @@ const ExpensesScreen: React.FC<ExpensesScreenProps> = ({ navigation }) => {
           <Button
             title=""
             icon="add"
-            onPress={() => navigation.navigate('AddEditExpense')}
+            onPress={handleAddExpense}
             style={styles.fabButton}
           />
         </View>
       )}
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={handleUpgrade}
+        limitType="expenses"
+        currentCount={getExpensesThisMonth()}
+        maxCount={getLimit('expenses')}
+      />
     </View>
   );
 };

@@ -18,27 +18,43 @@ import { Maintenance, Vehicle } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import {
   formatDate,
-  formatCurrency,
   getMaintenanceTypeName,
   getMaintenanceTypeIcon,
   groupByMonth,
   getMonthName,
 } from '../utils/helpers';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { useCurrency } from '../hooks/useCurrency';
 
 // Componentes
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import BannerAd from '../components/ads/BannerAd';
+import UpgradeModal from '../components/subscription/UpgradeModal';
 
 interface MaintenanceScreenProps {
   navigation: any;
 }
 
 const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({ navigation }) => {
+  const { canAdd, getLimit } = useSubscription();
+  const { formatCurrency, refreshCurrency } = useCurrency();
   const [maintenances, setMaintenances] = useState<Maintenance[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  // Contar mantenimientos del mes actual
+  const getMaintenancesThisMonth = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return maintenances.filter(m => {
+      const date = new Date(m.date);
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    }).length;
+  };
 
   // Cargar datos
   const loadData = async () => {
@@ -112,11 +128,34 @@ const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({ navigation }) => 
     );
   };
 
+  // Manejar agregar mantenimiento con verificación de límite
+  const handleAddMaintenance = () => {
+    const maintenancesThisMonth = getMaintenancesThisMonth();
+    
+    if (!canAdd('maintenance', maintenancesThisMonth)) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    navigation.navigate('AddEditMaintenance');
+  };
+
+  // Manejar upgrade desde modal
+  const handleUpgrade = (plan: any) => {
+    setShowUpgradeModal(false);
+    navigation.navigate('Paywall', {
+      source: 'limit',
+      limitType: 'maintenance',
+      preselectedPlan: plan,
+    });
+  };
+
   // Cargar datos al enfocar la pantalla
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+      refreshCurrency(); // Recargar moneda cuando la pantalla recibe foco
+    }, [refreshCurrency])
   );
 
   // Renderizar mantenimiento
@@ -225,7 +264,7 @@ const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({ navigation }) => 
         <Button
           title="Agregar Mantenimiento"
           icon="add-outline"
-          onPress={() => navigation.navigate('AddEditMaintenance')}
+          onPress={handleAddMaintenance}
           style={styles.emptyButton}
         />
       ) : (
@@ -253,7 +292,6 @@ const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({ navigation }) => 
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={!loading ? renderEmptyState : null}
-        ListFooterComponent={<BannerAd position="inline" />}
       />
 
       {vehicles.length > 0 && (
@@ -261,11 +299,20 @@ const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({ navigation }) => 
           <Button
             title=""
             icon="add"
-            onPress={() => navigation.navigate('AddEditMaintenance')}
+            onPress={handleAddMaintenance}
             style={styles.fabButton}
           />
         </View>
       )}
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={handleUpgrade}
+        limitType="maintenance"
+        currentCount={getMaintenancesThisMonth()}
+        maxCount={getLimit('maintenance')}
+      />
     </View>
   );
 };

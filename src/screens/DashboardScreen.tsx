@@ -19,23 +19,23 @@ import { Vehicle, Maintenance, Reminder, Expense } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import {
   formatDate,
-  formatCurrency,
   formatKilometers,
   getReminderStatusColor,
   getReminderStatusText,
   getDaysUntil,
 } from '../utils/helpers';
+import { useCurrency } from '../hooks/useCurrency';
 
 // Componentes
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import BannerAd from '../components/ads/BannerAd';
 
 interface DashboardScreenProps {
   navigation: any;
 }
 
 const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
+  const { formatCurrency, refreshCurrency } = useCurrency();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<Reminder[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -82,7 +82,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
-    }, [])
+      refreshCurrency(); // Recargar moneda cuando la pantalla recibe foco
+    }, [refreshCurrency])
   );
 
   // Calcular estadísticas generales
@@ -194,7 +195,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
-              {stats.monthlyExpenses > 0 ? formatCurrency(stats.monthlyExpenses) : '$0'}
+              {formatCurrency(stats.monthlyExpenses)}
             </Text>
             <Text style={styles.statLabel}>Este mes</Text>
           </View>
@@ -316,9 +317,6 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
         </View>
       )}
-
-      {/* Banner (no-op en Expo Go) */}
-      <BannerAd position="inline" />
 
       {/* Espacio adicional al final */}
       <View style={styles.bottomPadding} />

@@ -33,24 +33,34 @@ export const formatDateTime = (date: string | Date): string => {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
-// Formatear moneda
+// Formatear moneda (sincrónico - requiere pasar la moneda)
 export const formatCurrency = (amount: number, currency: string = 'MXN'): string => {
-  if (amount === 0) return '$0';
+  // Importar funciones de monedas
+  const { getCurrencyByCode, getCurrencySymbol, DEFAULT_CURRENCY } = require('../constants/currencies');
+  
+  const currencyCode = currency || DEFAULT_CURRENCY;
+  const currencyInfo = getCurrencyByCode(currencyCode);
+  const locale = currencyInfo?.locale || 'es-MX';
+  const symbol = getCurrencySymbol(currencyCode);
+  
+  if (amount === 0) {
+    return `${symbol}0`;
+  }
   
   // Para cantidades grandes, usar formato compacto
   if (amount >= 1000000) {
-    return `$${(amount / 1000000).toFixed(1)}M`;
+    return `${symbol}${(amount / 1000000).toFixed(1)}M`;
   }
   if (amount >= 10000) {
-    return `$${(amount / 1000).toFixed(0)}K`;
+    return `${symbol}${(amount / 1000).toFixed(0)}K`;
   }
   if (amount >= 1000) {
-    return `$${(amount / 1000).toFixed(1)}K`;
+    return `${symbol}${(amount / 1000).toFixed(1)}K`;
   }
   
-  return new Intl.NumberFormat('es-MX', {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: currency,
+    currency: currencyCode,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
@@ -132,7 +142,7 @@ export const getMaintenanceTypeIcon = (type: MaintenanceType): string => {
     [MaintenanceType.TRANSMISSION]: 'settings-outline',
     [MaintenanceType.COOLANT]: 'thermometer-outline',
     [MaintenanceType.BRAKE_FLUID]: 'water-outline',
-    [MaintenanceType.POWER_STEERING]: 'steering-wheel-outline',
+    [MaintenanceType.POWER_STEERING]: 'swap-horizontal-outline',
     [MaintenanceType.TIMING_BELT]: 'infinite-outline',
     [MaintenanceType.GENERAL_INSPECTION]: 'checkmark-circle-outline',
     [MaintenanceType.OTHER]: 'build-outline',

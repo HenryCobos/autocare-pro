@@ -28,12 +28,14 @@ export const Theme = {
     md: 16,
     lg: 24,
     xl: 32,
+    xxl: 48,
   },
   borderRadius: {
     sm: 4,
     md: 8,
     lg: 12,
     xl: 16,
+    xxl: 24,
   },
   fontSize: {
     xs: 12,

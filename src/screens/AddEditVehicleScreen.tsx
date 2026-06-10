@@ -10,19 +10,23 @@ import {
   Alert,
   Image,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Theme } from '../constants/Colors';
-import { Vehicle } from '../types';
+import { Vehicle, Customer } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
-import { generateId, getVehicleYearOptions } from '../utils/helpers';
+import { generateId } from '../utils/helpers';
+import { useTikTok } from '../hooks/useTracking';
 
 // Componentes
 import Input from '../components/common/Input';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
-import { useAds } from '../hooks/useAds';
 
 interface AddEditVehicleScreenProps {
   navigation: any;
@@ -33,9 +37,9 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
   navigation,
   route,
 }) => {
-  const { bumpAction, showInterstitialSmart } = useAds();
   const { vehicleId } = route.params || {};
   const isEditing = !!vehicleId;
+  const { trackCustomEvent } = useTikTok();
 
   const [formData, setFormData] = useState({
     brand: '',
@@ -44,18 +48,38 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
     currentKilometers: 0,
     licensePlate: '',
     photo: '',
+    customerId: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showCreateCustomerModal, setShowCreateCustomerModal] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    notes: '',
+  });
 
   // Cargar datos del vehículo si estamos editando
   useEffect(() => {
+    loadCustomers();
     if (isEditing) {
       loadVehicle();
     }
   }, [vehicleId]);
+
+  const loadCustomers = async () => {
+    try {
+      const customersData = await AsyncStorageService.getCustomers();
+      setCustomers(customersData);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+    }
+  };
 
   const loadVehicle = async () => {
     try {
@@ -70,6 +94,7 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
           currentKilometers: vehicle.currentKilometers,
           licensePlate: vehicle.licensePlate,
           photo: vehicle.photo || '',
+          customerId: vehicle.customerId || '',
         });
       }
     } catch (error) {
@@ -122,17 +147,17 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
         year: formData.year,
         currentKilometers: formData.currentKilometers,
         licensePlate: formData.licensePlate.trim().toUpperCase(),
+        customerId: formData.customerId || undefined,
         photo: formData.photo,
         createdAt: vehicleId ? (await AsyncStorageService.getVehicles()).find(v => v.id === vehicleId)?.createdAt || new Date().toISOString() : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
       await AsyncStorageService.saveVehicle(vehicleData);
-
-      try {
-        await bumpAction();
-        setTimeout(() => { showInterstitialSmart(); }, 500);
-      } catch {}
+      await trackCustomEvent(isEditing ? 'vehicle_updated' : 'vehicle_created', {
+        vehicle_id: vehicleData.id,
+        has_customer: Boolean(vehicleData.customerId),
+      });
 
       Alert.alert(
         'Éxito',
@@ -220,8 +245,62 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
     );
   };
 
+  const selectedCustomer = customers.find(customer => customer.id === formData.customerId);
+
+  const selectCustomer = (customerId: string) => {
+    setFormData(prev => ({ ...prev, customerId }));
+    setShowCustomerModal(false);
+  };
+
+  const createCustomer = async () => {
+    if (!customerForm.name.trim()) {
+      Alert.alert('Campo requerido', 'El nombre del cliente es obligatorio.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const customer: Customer = {
+        id: generateId(),
+        name: customerForm.name.trim(),
+        phone: customerForm.phone.trim() || undefined,
+        email: customerForm.email.trim() || undefined,
+        notes: customerForm.notes.trim() || undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await AsyncStorageService.saveCustomer(customer);
+      await loadCustomers();
+      await trackCustomEvent('customer_created', {
+        customer_id: customer.id,
+        has_phone: Boolean(customer.phone),
+        has_email: Boolean(customer.email),
+      });
+
+      setCustomerForm({ name: '', phone: '', email: '', notes: '' });
+      setShowCreateCustomerModal(false);
+      setFormData(prev => ({ ...prev, customerId: customer.id }));
+      Alert.alert('Éxito', 'Cliente creado y asignado al vehículo.');
+    } catch (error) {
+      console.error('Error creating customer:', error);
+      Alert.alert('Error', 'No se pudo crear el cliente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
       {/* Imagen del vehículo */}
       <Card style={styles.imageCard}>
         <Text style={styles.sectionTitle}>Foto del Vehículo</Text>
@@ -303,6 +382,22 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
         />
       </Card>
 
+      <Card>
+        <Text style={styles.sectionTitle}>Cliente (Opcional)</Text>
+        <TouchableOpacity
+          style={styles.customerSelector}
+          onPress={() => setShowCustomerModal(true)}
+        >
+          <View style={styles.customerSelectorInfo}>
+            <Text style={styles.customerSelectorLabel}>Asignado a</Text>
+            <Text style={styles.customerSelectorValue}>
+              {selectedCustomer ? selectedCustomer.name : 'Sin cliente'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.darkGray} />
+        </TouchableOpacity>
+      </Card>
+
       {/* Botones de acción */}
       <View style={styles.actions}>
         <Button
@@ -318,7 +413,154 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
           style={styles.actionButton}
         />
       </View>
+
+      <Modal
+        visible={showCustomerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCustomerModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Seleccionar Cliente</Text>
+              <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
+                <Ionicons name="close" size={24} color={Colors.darkGray} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.customerItem}
+              onPress={() => selectCustomer('')}
+            >
+              <View>
+                <Text style={styles.customerName}>Sin cliente</Text>
+                <Text style={styles.customerMeta}>Uso personal o sin asignación</Text>
+              </View>
+              {!formData.customerId && (
+                <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
+              )}
+            </TouchableOpacity>
+
+            <FlatList
+              data={customers}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.customerItem}
+                  onPress={() => selectCustomer(item.id)}
+                >
+                  <View style={styles.customerItemInfo}>
+                    <Text style={styles.customerName}>{item.name}</Text>
+                    <Text style={styles.customerMeta}>{item.phone || item.email || 'Sin contacto'}</Text>
+                  </View>
+                  {formData.customerId === item.id && (
+                    <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.emptyCustomerText}>Aún no tienes clientes registrados.</Text>
+              }
+              style={styles.customerList}
+            />
+
+            <View style={styles.modalActions}>
+              <Button
+                title="Nuevo Cliente"
+                icon="person-add-outline"
+                variant="outline"
+                onPress={() => {
+                  setShowCustomerModal(false);
+                  setShowCreateCustomerModal(true);
+                }}
+                style={styles.modalActionButton}
+              />
+              <Button
+                title="Cerrar"
+                onPress={() => setShowCustomerModal(false)}
+                style={styles.modalActionButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCreateCustomerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCreateCustomerModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <KeyboardAvoidingView
+            style={styles.modalKeyboardAvoid}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Nuevo Cliente</Text>
+                <TouchableOpacity onPress={() => setShowCreateCustomerModal(false)}>
+                  <Ionicons name="close" size={24} color={Colors.darkGray} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.createCustomerForm}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.createCustomerFormContent}
+              >
+                <Input
+                  label="Nombre"
+                  value={customerForm.name}
+                  onChangeText={(text) => setCustomerForm(prev => ({ ...prev, name: text }))}
+                  placeholder="Nombre del cliente"
+                  required
+                />
+                <Input
+                  label="Teléfono"
+                  value={customerForm.phone}
+                  onChangeText={(text) => setCustomerForm(prev => ({ ...prev, phone: text }))}
+                  placeholder="Ej: +51999999999"
+                  keyboardType="phone-pad"
+                />
+                <Input
+                  label="Email"
+                  value={customerForm.email}
+                  onChangeText={(text) => setCustomerForm(prev => ({ ...prev, email: text }))}
+                  placeholder="correo@dominio.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <Input
+                  label="Notas"
+                  value={customerForm.notes}
+                  onChangeText={(text) => setCustomerForm(prev => ({ ...prev, notes: text }))}
+                  placeholder="Información adicional (opcional)"
+                />
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <Button
+                  title="Cancelar"
+                  variant="outline"
+                  onPress={() => setShowCreateCustomerModal(false)}
+                  style={styles.modalActionButton}
+                />
+                <Button
+                  title="Guardar Cliente"
+                  onPress={createCustomer}
+                  loading={loading}
+                  style={styles.modalActionButton}
+                />
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -379,6 +621,102 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: Theme.fontSize.md,
     fontWeight: '600',
+  },
+  customerSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  customerSelectorInfo: {
+    flex: 1,
+  },
+  customerSelectorLabel: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+  },
+  customerSelectorValue: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+    color: Colors.text,
+    marginTop: Theme.spacing.xs,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalKeyboardAvoid: {
+    width: '100%',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: Theme.borderRadius.lg,
+    borderTopRightRadius: Theme.borderRadius.lg,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  customerList: {
+    maxHeight: 300,
+  },
+  customerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  customerItemInfo: {
+    flex: 1,
+    paddingRight: Theme.spacing.sm,
+  },
+  customerName: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  customerMeta: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+    marginTop: Theme.spacing.xs,
+  },
+  emptyCustomerText: {
+    padding: Theme.spacing.md,
+    textAlign: 'center',
+    color: Colors.textSecondary,
+    fontSize: Theme.fontSize.md,
+  },
+  createCustomerForm: {
+    paddingHorizontal: Theme.spacing.md,
+    maxHeight: 350,
+  },
+  createCustomerFormContent: {
+    paddingBottom: Theme.spacing.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: Theme.spacing.sm,
+    padding: Theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  modalActionButton: {
+    flex: 1,
   },
   actions: {
     flexDirection: 'row',

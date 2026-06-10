@@ -25,7 +25,6 @@ import {
 // Componentes
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import BannerAd from '../components/ads/BannerAd';
 
 interface CalendarScreenProps {
   navigation: any;
@@ -266,7 +265,6 @@ const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) => {
             {completedReminders.length > 0 && 
               renderSection('Completados', completedReminders, '')
             }
-            <BannerAd position="inline" />
           </View>
         )}
         keyExtractor={() => 'calendar-content'}

@@ -2,7 +2,7 @@
  * Servicio para gestión de datos con AsyncStorage
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Vehicle, Maintenance, Expense, Reminder, AppSettings } from '../types';
+import { Vehicle, Maintenance, Expense, Reminder, AppSettings, Customer, WorkOrder } from '../types';
 
 // Claves para AsyncStorage
 const STORAGE_KEYS = {
@@ -10,8 +10,22 @@ const STORAGE_KEYS = {
   MAINTENANCES: '@autocare_maintenances',
   EXPENSES: '@autocare_expenses',
   REMINDERS: '@autocare_reminders',
+  CUSTOMERS: '@autocare_customers',
+  WORK_ORDERS: '@autocare_work_orders',
   SETTINGS: '@autocare_settings',
+  ONBOARDING_COMPLETED: '@autocare_onboarding_completed',
 };
+
+export interface BackupPayload {
+  vehicles: Vehicle[];
+  maintenances: Maintenance[];
+  expenses: Expense[];
+  reminders: Reminder[];
+  customers: Customer[];
+  workOrders: WorkOrder[];
+  settings: AppSettings;
+  onboardingCompleted: boolean;
+}
 
 class AsyncStorageService {
   // Métodos genéricos
@@ -62,6 +76,7 @@ class AsyncStorageService {
     await this.deleteMaintenancesByVehicle(vehicleId);
     await this.deleteExpensesByVehicle(vehicleId);
     await this.deleteRemindersByVehicle(vehicleId);
+    await this.deleteWorkOrdersByVehicle(vehicleId);
   }
 
   // Mantenimientos
@@ -169,6 +184,74 @@ class AsyncStorageService {
     await this.setData(STORAGE_KEYS.REMINDERS, filteredReminders);
   }
 
+  // Clientes
+  async getCustomers(): Promise<Customer[]> {
+    return this.getData<Customer>(STORAGE_KEYS.CUSTOMERS);
+  }
+
+  async saveCustomer(customer: Customer): Promise<void> {
+    const customers = await this.getCustomers();
+    const existingIndex = customers.findIndex(c => c.id === customer.id);
+
+    if (existingIndex >= 0) {
+      customers[existingIndex] = { ...customer, updatedAt: new Date().toISOString() };
+    } else {
+      customers.push(customer);
+    }
+
+    await this.setData(STORAGE_KEYS.CUSTOMERS, customers);
+  }
+
+  async deleteCustomer(customerId: string): Promise<void> {
+    const customers = await this.getCustomers();
+    const filteredCustomers = customers.filter(c => c.id !== customerId);
+    await this.setData(STORAGE_KEYS.CUSTOMERS, filteredCustomers);
+
+    // Al eliminar cliente, quitar la referencia en vehículos (no borrar vehículos)
+    const vehicles = await this.getVehicles();
+    const updatedVehicles = vehicles.map(vehicle =>
+      vehicle.customerId === customerId
+        ? { ...vehicle, customerId: undefined, updatedAt: new Date().toISOString() }
+        : vehicle
+    );
+    await this.setData(STORAGE_KEYS.VEHICLES, updatedVehicles);
+  }
+
+  // Órdenes de trabajo
+  async getWorkOrders(): Promise<WorkOrder[]> {
+    return this.getData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS);
+  }
+
+  async getWorkOrdersByVehicle(vehicleId: string): Promise<WorkOrder[]> {
+    const workOrders = await this.getWorkOrders();
+    return workOrders.filter(order => order.vehicleId === vehicleId);
+  }
+
+  async saveWorkOrder(workOrder: WorkOrder): Promise<void> {
+    const workOrders = await this.getWorkOrders();
+    const existingIndex = workOrders.findIndex(order => order.id === workOrder.id);
+
+    if (existingIndex >= 0) {
+      workOrders[existingIndex] = { ...workOrder, updatedAt: new Date().toISOString() };
+    } else {
+      workOrders.push(workOrder);
+    }
+
+    await this.setData(STORAGE_KEYS.WORK_ORDERS, workOrders);
+  }
+
+  async deleteWorkOrder(workOrderId: string): Promise<void> {
+    const workOrders = await this.getWorkOrders();
+    const filteredWorkOrders = workOrders.filter(order => order.id !== workOrderId);
+    await this.setData(STORAGE_KEYS.WORK_ORDERS, filteredWorkOrders);
+  }
+
+  async deleteWorkOrdersByVehicle(vehicleId: string): Promise<void> {
+    const workOrders = await this.getWorkOrders();
+    const filteredWorkOrders = workOrders.filter(order => order.vehicleId !== vehicleId);
+    await this.setData(STORAGE_KEYS.WORK_ORDERS, filteredWorkOrders);
+  }
+
   // Configuración
   async getSettings(): Promise<AppSettings> {
     try {
@@ -210,6 +293,90 @@ class AsyncStorageService {
     }
   }
 
+  // Onboarding
+  async isOnboardingCompleted(): Promise<boolean> {
+    try {
+      const value = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
+      return value === 'true';
+    } catch (error) {
+      console.error('Error checking onboarding status:', error);
+      return false;
+    }
+  }
+
+  async setOnboardingCompleted(completed: boolean): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETED, completed ? 'true' : 'false');
+    } catch (error) {
+      console.error('Error setting onboarding status:', error);
+      throw error;
+    }
+  }
+
+  async resetOnboarding(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
+    } catch (error) {
+      console.error('Error resetting onboarding:', error);
+      throw error;
+    }
+  }
+
+  // Backup: obtener todos los datos relevantes para exportación
+  async getBackupData(): Promise<BackupPayload> {
+    const [vehicles, maintenances, expenses, reminders, customers, workOrders, settings, onboardingCompleted] = await Promise.all([
+      this.getVehicles(),
+      this.getMaintenances(),
+      this.getExpenses(),
+      this.getReminders(),
+      this.getCustomers(),
+      this.getWorkOrders(),
+      this.getSettings(),
+      this.isOnboardingCompleted(),
+    ]);
+
+    return {
+      vehicles,
+      maintenances,
+      expenses,
+      reminders,
+      customers,
+      workOrders,
+      settings,
+      onboardingCompleted,
+    };
+  }
+
+  // Backup: restaurar todos los datos desde un respaldo válido
+  async restoreBackupData(payload: BackupPayload): Promise<void> {
+    const vehicles = Array.isArray(payload.vehicles) ? payload.vehicles : [];
+    const maintenances = Array.isArray(payload.maintenances) ? payload.maintenances : [];
+    const expenses = Array.isArray(payload.expenses) ? payload.expenses : [];
+    const reminders = Array.isArray(payload.reminders) ? payload.reminders : [];
+    const customers = Array.isArray(payload.customers) ? payload.customers : [];
+    const workOrders = Array.isArray(payload.workOrders) ? payload.workOrders : [];
+    const onboardingCompleted = payload.onboardingCompleted === true;
+
+    const settings: AppSettings = payload.settings || {
+      language: 'es',
+      notifications: true,
+      reminderDays: 7,
+      currency: 'MXN',
+      distanceUnit: 'km',
+    };
+
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.VEHICLES, JSON.stringify(vehicles)],
+      [STORAGE_KEYS.MAINTENANCES, JSON.stringify(maintenances)],
+      [STORAGE_KEYS.EXPENSES, JSON.stringify(expenses)],
+      [STORAGE_KEYS.REMINDERS, JSON.stringify(reminders)],
+      [STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers)],
+      [STORAGE_KEYS.WORK_ORDERS, JSON.stringify(workOrders)],
+      [STORAGE_KEYS.SETTINGS, JSON.stringify(settings)],
+      [STORAGE_KEYS.ONBOARDING_COMPLETED, onboardingCompleted ? 'true' : 'false'],
+    ]);
+  }
+
   // Método para limpiar todos los datos (útil para resetear la app)
   async clearAllData(): Promise<void> {
     try {
@@ -218,6 +385,8 @@ class AsyncStorageService {
         STORAGE_KEYS.MAINTENANCES,
         STORAGE_KEYS.EXPENSES,
         STORAGE_KEYS.REMINDERS,
+        STORAGE_KEYS.CUSTOMERS,
+        STORAGE_KEYS.WORK_ORDERS,
       ]);
     } catch (error) {
       console.error('Error clearing data:', error);

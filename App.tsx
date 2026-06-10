@@ -3,7 +3,7 @@ import 'react-native-gesture-handler';
  * AutoCare Pro - Aplicación de gestión de mantenimiento vehicular
  * Desarrollada con React Native y Expo
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,6 +14,11 @@ import AppNavigator from './src/navigation/AppNavigator';
 // Hooks
 import { useNotifications } from './src/hooks/useNotifications';
 import { useTrackingTransparency } from './src/hooks/useTracking';
+import { TikTokAnalyticsService } from './src/services/TikTokAnalyticsService';
+
+// Contextos
+import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
+import { TikTokProvider } from './src/contexts/TikTokContext';
 
 // Colores
 import { Colors } from './src/constants/Colors';
@@ -23,19 +28,26 @@ export default function App() {
   LogBox.ignoreLogs([
     'new NativeEventEmitter',
     'expo-notifications',
-    'RNGoogleMobileAds',
   ]);
+
   // Inicializar notificaciones
   useNotifications();
-  // Solicitar ATT en iOS
-  useTrackingTransparency();
+  const { canTrack, advertisingId } = useTrackingTransparency();
+
+  useEffect(() => {
+    TikTokAnalyticsService.setTrackingAuthorization(canTrack, advertisingId);
+  }, [canTrack, advertisingId]);
 
   return (
     <SafeAreaProvider>
-      <View style={styles.container}>
-        <StatusBar style="light" backgroundColor={Colors.primary} />
-        <AppNavigator />
-      </View>
+      <TikTokProvider>
+        <SubscriptionProvider>
+          <View style={styles.container}>
+            <StatusBar style="light" backgroundColor={Colors.primary} />
+            <AppNavigator />
+          </View>
+        </SubscriptionProvider>
+      </TikTokProvider>
     </SafeAreaProvider>
   );
 }

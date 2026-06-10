@@ -17,20 +17,23 @@ import { Colors, Theme } from '../constants/Colors';
 import { Vehicle } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import { formatKilometers, getVehicleAge } from '../utils/helpers';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 // Componentes
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import BannerAd from '../components/ads/BannerAd';
+import UpgradeModal from '../components/subscription/UpgradeModal';
 
 interface VehiclesScreenProps {
   navigation: any;
 }
 
 const VehiclesScreen: React.FC<VehiclesScreenProps> = ({ navigation }) => {
+  const { canAdd, getLimit } = useSubscription();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Cargar vehículos
   const loadVehicles = async () => {
@@ -79,6 +82,26 @@ const VehiclesScreen: React.FC<VehiclesScreenProps> = ({ navigation }) => {
         },
       ]
     );
+  };
+
+  // Manejar agregar vehículo con verificación de límite
+  const handleAddVehicle = () => {
+    if (!canAdd('vehicles', vehicles.length)) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    navigation.navigate('AddEditVehicle');
+  };
+
+  // Manejar upgrade desde modal
+  const handleUpgrade = (plan: any) => {
+    setShowUpgradeModal(false);
+    navigation.navigate('Paywall', {
+      source: 'limit',
+      limitType: 'vehicles',
+      preselectedPlan: plan,
+    });
   };
 
   // Cargar datos al enfocar la pantalla
@@ -185,7 +208,7 @@ const VehiclesScreen: React.FC<VehiclesScreenProps> = ({ navigation }) => {
       <Button
         title="Agregar Vehículo"
         icon="add-outline"
-        onPress={() => navigation.navigate('AddEditVehicle')}
+        onPress={handleAddVehicle}
         style={styles.emptyButton}
       />
     </View>
@@ -201,7 +224,6 @@ const VehiclesScreen: React.FC<VehiclesScreenProps> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={!loading ? renderEmptyState : null}
-        ListFooterComponent={<BannerAd position="inline" />}
       />
 
       {vehicles.length > 0 && (
@@ -209,11 +231,20 @@ const VehiclesScreen: React.FC<VehiclesScreenProps> = ({ navigation }) => {
           <Button
             title=""
             icon="add"
-            onPress={() => navigation.navigate('AddEditVehicle')}
+            onPress={handleAddVehicle}
             style={styles.fabButton}
           />
         </View>
       )}
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={handleUpgrade}
+        limitType="vehicles"
+        currentCount={vehicles.length}
+        maxCount={getLimit('vehicles')}
+      />
     </View>
   );
 };

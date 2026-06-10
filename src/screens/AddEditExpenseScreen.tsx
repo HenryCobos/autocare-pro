@@ -12,15 +12,19 @@ import {
   Modal,
   FlatList,
   Platform,
+  KeyboardAvoidingView,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
 import { Colors, Theme } from '../constants/Colors';
 import { Expense, Vehicle, ExpenseType } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import { generateId, getExpenseTypeName, formatDate } from '../utils/helpers';
-import { useAds } from '../hooks/useAds';
+import { useTikTok } from '../hooks/useTracking';
 
 // Componentes
 import Input from '../components/common/Input';
@@ -37,14 +41,14 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
   navigation,
   route,
 }) => {
-  const { bumpAction, showInterstitialSmart } = useAds();
-  const { vehicleId, expenseId } = route.params || {};
+  const { vehicleId, expenseId, prefillDescription } = route.params || {};
   const isEditing = !!expenseId;
+  const { trackCustomEvent } = useTikTok();
 
   const [formData, setFormData] = useState({
     vehicleId: vehicleId || '',
     type: ExpenseType.FUEL,
-    description: '',
+    description: prefillDescription || '',
     amount: 0,
     date: new Date(),
     category: '',
@@ -58,6 +62,7 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
   // Cargar datos
   useEffect(() => {
@@ -153,12 +158,12 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
       };
 
       await AsyncStorageService.saveExpense(expenseData);
-
-      try {
-        await bumpAction();
-        setTimeout(() => { showInterstitialSmart(); }, 500);
-      } catch {}
-
+      await trackCustomEvent(isEditing ? 'expense_updated' : 'expense_created', {
+        expense_id: expenseData.id,
+        vehicle_id: expenseData.vehicleId,
+        expense_type: expenseData.type,
+        value: expenseData.amount,
+      });
       Alert.alert(
         'Éxito',
         `Gasto ${isEditing ? 'actualizado' : 'agregado'} correctamente`,
@@ -172,7 +177,20 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
     }
   };
 
-  // Seleccionar imagen
+  // Mostrar opciones de imagen
+  const showImageOptions = () => {
+    Alert.alert(
+      'Seleccionar Foto',
+      'Elige una opción para la foto del recibo',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Galería', onPress: pickImage },
+        { text: 'Cámara', onPress: takePhoto },
+      ]
+    );
+  };
+
+  // Seleccionar imagen de galería
   const pickImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -195,6 +213,49 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
     } catch (error) {
       console.error('Error picking image:', error);
       Alert.alert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
+  // Tomar foto con cámara
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos para acceder a la cámara');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setFormData(prev => ({ ...prev, photo: result.assets[0].uri }));
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  // Compartir/Descargar foto
+  const sharePhoto = async () => {
+    if (!formData.photo) return;
+
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Error', 'Compartir no está disponible en este dispositivo');
+        return;
+      }
+
+      await Sharing.shareAsync(formData.photo);
+    } catch (error) {
+      console.error('Error sharing photo:', error);
+      Alert.alert('Error', 'No se pudo compartir la foto');
     }
   };
 
@@ -248,7 +309,16 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
       {/* Información del gasto */}
       <Card>
         <Text style={styles.sectionTitle}>Información del Gasto</Text>
@@ -331,20 +401,51 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
       {/* Foto */}
       <Card>
         <Text style={styles.sectionTitle}>Foto del Recibo (Opcional)</Text>
-        <Button
-          title={formData.photo ? 'Cambiar Foto' : 'Agregar Foto'}
-          icon="camera-outline"
-          variant="outline"
-          onPress={pickImage}
-        />
-        {formData.photo && (
+        
+        {formData.photo ? (
+          <>
+            <TouchableOpacity
+              style={styles.photoPreview}
+              onPress={() => setShowPhotoModal(true)}
+            >
+              <Image source={{ uri: formData.photo }} style={styles.photoImage} />
+              <View style={styles.photoOverlay}>
+                <Ionicons name="eye-outline" size={24} color={Colors.white} />
+                <Text style={styles.photoOverlayText}>Toca para ver</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <View style={styles.photoActions}>
+              <Button
+                title="Cambiar Foto"
+                icon="camera-outline"
+                variant="outline"
+                onPress={showImageOptions}
+                style={styles.photoActionButton}
+              />
+              <Button
+                title="Ver/Descargar"
+                icon="share-outline"
+                variant="outline"
+                onPress={sharePhoto}
+                style={styles.photoActionButton}
+              />
+              <Button
+                title="Eliminar"
+                icon="trash-outline"
+                variant="danger"
+                size="small"
+                onPress={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                style={styles.photoActionButton}
+              />
+            </View>
+          </>
+        ) : (
           <Button
-            title="Eliminar Foto"
-            icon="trash-outline"
-            variant="danger"
-            size="small"
-            onPress={() => setFormData(prev => ({ ...prev, photo: '' }))}
-            style={styles.removePhotoButton}
+            title="Agregar Foto"
+            icon="camera-outline"
+            variant="outline"
+            onPress={showImageOptions}
           />
         )}
       </Card>
@@ -443,7 +544,41 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
         onClose={() => setShowDatePicker(false)}
         onChange={(date) => setFormData(prev => ({ ...prev, date }))}
       />
+
+      {/* Modal de visualización de foto */}
+      <Modal
+        visible={showPhotoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhotoModal(false)}
+      >
+        <View style={styles.photoModalContainer}>
+          <TouchableOpacity
+            style={styles.photoModalClose}
+            onPress={() => setShowPhotoModal(false)}
+          >
+            <Ionicons name="close" size={32} color={Colors.white} />
+          </TouchableOpacity>
+          
+          <Image
+            source={{ uri: formData.photo }}
+            style={styles.photoModalImage}
+            resizeMode="contain"
+          />
+          
+          <View style={styles.photoModalActions}>
+            <TouchableOpacity
+              style={styles.photoModalActionButton}
+              onPress={sharePhoto}
+            >
+              <Ionicons name="share-outline" size={24} color={Colors.white} />
+              <Text style={[styles.photoModalActionText, { marginLeft: Theme.spacing.sm }]}>Compartir/Descargar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -501,6 +636,83 @@ const styles = StyleSheet.create({
   removePhotoButton: {
     marginTop: Theme.spacing.sm,
     width: 120,
+  },
+  photoPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: Theme.borderRadius.md,
+    overflow: 'hidden',
+    marginBottom: Theme.spacing.md,
+    backgroundColor: Colors.lightGray,
+    position: 'relative',
+  },
+  photoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: Theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOverlayText: {
+    color: Colors.white,
+    marginLeft: Theme.spacing.xs,
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+  },
+  photoActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -Theme.spacing.xs,
+  },
+  photoActionButton: {
+    flex: 1,
+    minWidth: '30%',
+    marginHorizontal: Theme.spacing.xs,
+  },
+  photoModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalClose: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    right: 20,
+    zIndex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  photoModalImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.7,
+  },
+  photoModalActions: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 50 : 30,
+    alignSelf: 'center',
+  },
+  photoModalActionButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  photoModalActionText: {
+    color: Colors.white,
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',

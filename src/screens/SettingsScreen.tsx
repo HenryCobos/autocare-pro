@@ -10,6 +10,9 @@ import {
   Alert,
   Switch,
   TouchableOpacity,
+  Modal,
+  FlatList,
+  Linking,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,16 +20,29 @@ import { Colors, Theme } from '../constants/Colors';
 import { AppSettings } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import NotificationService from '../services/NotificationService';
+import BackupService from '../services/BackupService';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { PLAN_FEATURES } from '../types/subscription';
+import {
+  ALL_CURRENCIES,
+  LATIN_AMERICA_CURRENCIES,
+  CENTRAL_NORTH_AMERICA_CURRENCIES,
+  EUROPE_CURRENCIES,
+  Currency,
+  getCurrencyByCode,
+} from '../constants/currencies';
+import { useTikTok } from '../hooks/useTracking';
 
 // Componentes
 import Card from '../components/common/Card';
-import Button from '../components/common/Button';
 
 interface SettingsScreenProps {
   navigation: any;
 }
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
+  const { currentPlan, isActive, isPro, isPremium } = useSubscription();
+  const { trackCustomEvent } = useTikTok();
   const [settings, setSettings] = useState<AppSettings>({
     language: 'es',
     notifications: true,
@@ -35,6 +51,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     distanceUnit: 'km',
   });
   const [loading, setLoading] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const supportEmail = 'apper2025@icloud.com';
+  const supportWhatsAppNumber = '51994277540';
 
   // Cargar configuración
   const loadSettings = async () => {
@@ -94,15 +113,143 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   // Cambiar moneda
-  const changeCurrency = () => {
+  const changeCurrency = (currencyCode: string) => {
+    setShowCurrencyPicker(false);
+    saveSettings({ ...settings, currency: currencyCode });
+  };
+
+  // Obtener nombre de moneda
+  const getCurrencyName = (code: string): string => {
+    const currency = getCurrencyByCode(code);
+    return currency ? `${currency.name} (${currency.code})` : code;
+  };
+
+  // Renderizar moneda
+  const renderCurrency = ({ item }: { item: Currency }) => (
+    <TouchableOpacity
+      style={[
+        styles.currencyItem,
+        settings.currency === item.code && styles.currencyItemSelected,
+      ]}
+      onPress={() => changeCurrency(item.code)}
+    >
+      <View style={styles.currencyInfo}>
+        <Text style={[
+          styles.currencyCode,
+          settings.currency === item.code && styles.currencyCodeSelected,
+        ]}>
+          {item.code}
+        </Text>
+        <Text style={[
+          styles.currencyName,
+          settings.currency === item.code && styles.currencyNameSelected,
+        ]}>
+          {item.name}
+        </Text>
+      </View>
+      <Text style={[
+        styles.currencySymbol,
+        settings.currency === item.code && styles.currencySymbolSelected,
+      ]}>
+        {item.symbol}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  // Agrupar monedas para FlatList
+  const currencySections = [
+    { title: 'Latinoamérica', data: LATIN_AMERICA_CURRENCIES },
+    { title: 'América del Norte/Centro', data: CENTRAL_NORTH_AMERICA_CURRENCIES },
+    { title: 'Europa', data: EUROPE_CURRENCIES },
+  ];
+
+  // Reiniciar onboarding
+  const resetOnboarding = () => {
     Alert.alert(
-      'Moneda',
-      'Selecciona la moneda que prefieres usar',
+      'Reiniciar Tutorial',
+      '¿Deseas ver el tutorial de bienvenida nuevamente? La aplicación se reiniciará.',
       [
-        { text: 'Peso Mexicano (MXN)', onPress: () => saveSettings({ ...settings, currency: 'MXN' }) },
-        { text: 'Dólar Americano (USD)', onPress: () => saveSettings({ ...settings, currency: 'USD' }) },
-        { text: 'Euro (EUR)', onPress: () => saveSettings({ ...settings, currency: 'EUR' }) },
         { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Ver Tutorial',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await AsyncStorageService.resetOnboarding();
+              // Reiniciar la app navegando al onboarding
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Onboarding' as never }],
+              });
+            } catch (error) {
+              console.error('Error resetting onboarding:', error);
+              Alert.alert('Error', 'No se pudo reiniciar el tutorial');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Descargar respaldo local en archivo JSON
+  const downloadBackup = async () => {
+    try {
+      setLoading(true);
+      const result = await BackupService.exportBackup();
+      if (result.success) {
+        await trackCustomEvent('backup_exported');
+        Alert.alert(
+          'Respaldo generado',
+          'Se abrió el menú para guardar o compartir tu archivo de respaldo.'
+        );
+      } else {
+        await trackCustomEvent('backup_export_failed', { reason: result.error || 'unknown' });
+        Alert.alert('No se pudo crear el respaldo', result.error || 'Intenta nuevamente.');
+      }
+    } catch (error) {
+      console.error('Error creating backup:', error);
+      Alert.alert('Error', 'No se pudo crear el respaldo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Restaurar respaldo desde archivo JSON
+  const restoreBackup = () => {
+    Alert.alert(
+      'Restaurar respaldo',
+      'Esta acción reemplazará los datos actuales (vehículos, mantenimientos, gastos, recordatorios y ajustes) por los del archivo seleccionado.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Seleccionar archivo',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const result = await BackupService.restoreBackupFromFile();
+
+              if (result.success) {
+                await loadSettings();
+                await trackCustomEvent('backup_restored');
+                Alert.alert(
+                  'Respaldo restaurado',
+                  'Tus datos fueron restaurados correctamente.'
+                );
+              } else if (result.error !== 'Selección cancelada.') {
+                await trackCustomEvent('backup_restore_failed', { reason: result.error || 'unknown' });
+                Alert.alert('No se pudo restaurar', result.error || 'Intenta con otro archivo.');
+              }
+            } catch (error) {
+              console.error('Error restoring backup:', error);
+              Alert.alert('Error', 'No se pudo restaurar el respaldo');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
       ]
     );
   };
@@ -132,6 +279,50 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           },
         },
       ]
+    );
+  };
+
+  // Abrir enlaces externos de forma segura
+  const openExternalLink = async (url: string, fallbackError: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert('No disponible', fallbackError);
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('Error opening external link:', error);
+      Alert.alert('Error', 'No se pudo abrir el enlace.');
+    }
+  };
+
+  // Contacto por correo
+  const contactByEmail = async () => {
+    const subject = encodeURIComponent('Soporte AutoCare Pro');
+    const body = encodeURIComponent(
+      'Hola, necesito ayuda con AutoCare Pro.\n\nDetalle de mi consulta:\n'
+    );
+    const mailtoUrl = `mailto:${supportEmail}?subject=${subject}&body=${body}`;
+
+    await trackCustomEvent('support_contact_email');
+    await openExternalLink(
+      mailtoUrl,
+      `No se pudo abrir la app de correo. Escríbenos a ${supportEmail}.`
+    );
+  };
+
+  // Contacto por WhatsApp
+  const contactByWhatsApp = async () => {
+    const message = encodeURIComponent(
+      'Hola, necesito ayuda con AutoCare Pro.'
+    );
+    const whatsappUrl = `https://wa.me/${supportWhatsAppNumber}?text=${message}`;
+
+    await trackCustomEvent('support_contact_whatsapp');
+    await openExternalLink(
+      whatsappUrl,
+      `No se pudo abrir WhatsApp. Puedes escribir al +${supportWhatsAppNumber}.`
     );
   };
 
@@ -172,6 +363,42 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Suscripción */}
+      <Card>
+        <View style={styles.subscriptionHeader}>
+          <View style={styles.subscriptionInfo}>
+            <Text style={styles.subscriptionIcon}>{PLAN_FEATURES[currentPlan].icon}</Text>
+            <View style={styles.subscriptionText}>
+              <Text style={styles.subscriptionPlan}>{PLAN_FEATURES[currentPlan].name}</Text>
+              <Text style={styles.subscriptionStatus}>
+                {isActive ? 'Activo' : 'Plan Gratuito'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.manageButton}
+            onPress={() => navigation.navigate('SubscriptionManagement')}
+          >
+            <Text style={styles.manageButtonText}>
+              {isPro || isPremium ? 'Gestionar' : 'Mejorar'}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </Card>
+
+      {/* Preferencias */}
+      <Card>
+        <Text style={styles.sectionTitle}>Preferencias</Text>
+        
+        {renderSettingItem(
+          'cash-outline',
+          'Moneda',
+          getCurrencyName(settings.currency),
+          () => setShowCurrencyPicker(true)
+        )}
+      </Card>
+
       {/* Notificaciones */}
       <Card>
         <Text style={styles.sectionTitle}>Notificaciones</Text>
@@ -197,31 +424,30 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         )}
       </Card>
 
-      {/* Preferencias */}
+      {/* Gestión de Datos */}
       <Card>
-        <Text style={styles.sectionTitle}>Preferencias</Text>
+        <Text style={styles.sectionTitle}>Datos</Text>
         
         {renderSettingItem(
-          'cash-outline',
-          'Moneda',
-          `Moneda predeterminada: ${settings.currency}`,
-          changeCurrency
+          'download-outline',
+          'Descargar Respaldo',
+          'Guardar una copia de seguridad de tus datos',
+          downloadBackup
         )}
-        
-        {renderSettingItem(
-          'speedometer-outline',
-          'Unidad de Distancia',
-          `Usar ${settings.distanceUnit}`,
-          () => {
-            const newUnit = settings.distanceUnit === 'km' ? 'miles' : 'km';
-            saveSettings({ ...settings, distanceUnit: newUnit });
-          }
-        )}
-      </Card>
 
-      {/* Datos */}
-      <Card>
-        <Text style={styles.sectionTitle}>Gestión de Datos</Text>
+        {renderSettingItem(
+          'cloud-upload-outline',
+          'Restaurar Respaldo',
+          'Importar datos desde un archivo de respaldo',
+          restoreBackup
+        )}
+
+        {renderSettingItem(
+          'rocket-outline',
+          'Ver Tutorial de Inicio',
+          'Volver a ver la guía de bienvenida',
+          resetOnboarding
+        )}
         
         {renderSettingItem(
           'trash-outline',
@@ -231,39 +457,62 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         )}
       </Card>
 
-      {/* Información de la App */}
+      {/* Soporte y Ayuda */}
       <Card>
-        <Text style={styles.sectionTitle}>Información</Text>
-        
+        <Text style={styles.sectionTitle}>Soporte y Ayuda</Text>
+
         {renderSettingItem(
-          'information-circle-outline',
-          'Versión de la App',
-          '1.0.0'
+          'mail-outline',
+          'Contactar por Email',
+          supportEmail,
+          contactByEmail
         )}
-        
+
         {renderSettingItem(
-          'help-circle-outline',
-          'Ayuda y Soporte',
-          'Obtener ayuda con la aplicación',
-          () => Alert.alert(
-            'Ayuda y Soporte',
-            'Para obtener ayuda con AutoCare Pro, visita nuestro sitio web o contáctanos por email.\n\nEsta es una aplicación demo creada para gestión de mantenimiento vehicular.'
-          )
-        )}
-        
-        {renderSettingItem(
-          'star-outline',
-          'Calificar App',
-          'Califica AutoCare Pro en la App Store',
-          () => Alert.alert(
-            'Calificar App',
-            '¡Gracias por usar AutoCare Pro! Tu calificación nos ayuda a mejorar.'
-          )
+          'logo-whatsapp',
+          'Contactar por WhatsApp',
+          '+51994277540',
+          contactByWhatsApp
         )}
       </Card>
 
       {/* Espaciado inferior */}
       <View style={styles.bottomSpacing} />
+
+      {/* Modal selector de moneda */}
+      <Modal
+        visible={showCurrencyPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCurrencyPicker(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Seleccionar Moneda</Text>
+              <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
+                <Ionicons name="close" size={24} color={Colors.darkGray} />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={currencySections}
+              keyExtractor={(item, index) => `section-${index}`}
+              renderItem={({ item: section }) => (
+                <View>
+                  <Text style={styles.sectionHeader}>{section.title}</Text>
+                  {section.data.map((currency) => (
+                    <View key={currency.code}>
+                      {renderCurrency({ item: currency })}
+                    </View>
+                  ))}
+                </View>
+              )}
+              style={styles.currencyList}
+            />
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -313,6 +562,124 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: Theme.spacing.xl,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.md,
+  },
+  subscriptionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  subscriptionIcon: {
+    fontSize: 40,
+    marginRight: Theme.spacing.md,
+  },
+  subscriptionText: {
+    flex: 1,
+  },
+  subscriptionPlan: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  subscriptionStatus: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.lightGray,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.lg,
+    gap: 4,
+  },
+  manageButtonText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: Theme.borderRadius.lg,
+    borderTopRightRadius: Theme.borderRadius.lg,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  currencyList: {
+    maxHeight: 500,
+  },
+  sectionHeader: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    backgroundColor: Colors.lightGray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  currencyItemSelected: {
+    backgroundColor: Colors.lightGray,
+  },
+  currencyInfo: {
+    flex: 1,
+  },
+  currencyCode: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  currencyCodeSelected: {
+    color: Colors.primary,
+  },
+  currencyName: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+    marginTop: Theme.spacing.xs,
+  },
+  currencyNameSelected: {
+    color: Colors.primary,
+  },
+  currencySymbol: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginLeft: Theme.spacing.md,
+  },
+  currencySymbolSelected: {
+    color: Colors.primary,
   },
 });
 

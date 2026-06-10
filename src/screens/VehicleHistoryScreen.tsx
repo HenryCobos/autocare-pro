@@ -11,15 +11,15 @@ import {
   RefreshControl,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Theme } from '../constants/Colors';
-import { Vehicle, Maintenance, Expense, Reminder } from '../types';
+import { Vehicle, Maintenance, Expense, Reminder, WorkOrder, WorkOrderStatus, Customer } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import {
   formatDate,
-  formatCurrency,
   formatKilometers,
   getMaintenanceTypeName,
   getMaintenanceTypeIcon,
@@ -29,10 +29,14 @@ import {
   getReminderStatusText,
   getVehicleAge,
 } from '../utils/helpers';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { useCurrency } from '../hooks/useCurrency';
+import ExportService from '../services/ExportService';
 
 // Componentes
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
+import UpgradeModal from '../components/subscription/UpgradeModal';
 
 interface VehicleHistoryScreenProps {
   navigation: any;
@@ -51,13 +55,19 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
   route,
 }) => {
   const { vehicleId } = route.params;
+  const { hasFeature } = useSubscription();
+  const { formatCurrency, refreshCurrency } = useCurrency();
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [maintenances, setMaintenances] = useState<Maintenance[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'maintenance' | 'expenses' | 'reminders'>('all');
 
@@ -66,12 +76,13 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
     try {
       setLoading(true);
       
-      const [vehicleData, vehiclesData, maintenancesData, expensesData, remindersData] = await Promise.all([
+      const [vehicleData, maintenancesData, expensesData, remindersData, workOrdersData, customersData] = await Promise.all([
         AsyncStorageService.getVehicles().then(vehicles => vehicles.find(v => v.id === vehicleId)),
-        AsyncStorageService.getVehicles(),
         AsyncStorageService.getMaintenancesByVehicle(vehicleId),
         AsyncStorageService.getExpensesByVehicle(vehicleId),
         AsyncStorageService.getRemindersByVehicle(vehicleId),
+        AsyncStorageService.getWorkOrdersByVehicle(vehicleId),
+        AsyncStorageService.getCustomers(),
       ]);
 
       if (!vehicleData) {
@@ -84,6 +95,8 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
       setMaintenances(maintenancesData);
       setExpenses(expensesData);
       setReminders(remindersData);
+      setWorkOrders(workOrdersData.sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()));
+      setCustomers(customersData);
 
       // Crear timeline combinado
       const timeline: HistoryItem[] = [
@@ -123,11 +136,52 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
     setRefreshing(false);
   };
 
+  // Manejar exportación a PDF
+  const handleExportPDF = async () => {
+    // Verificar si tiene acceso a exportación
+    if (!hasFeature('canExportPDF')) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (!vehicle) return;
+
+    try {
+      setExporting(true);
+      const result = await ExportService.exportVehicleHistory(
+        vehicle,
+        maintenances,
+        expenses
+      );
+
+      if (result.success) {
+        Alert.alert('Éxito', 'PDF generado correctamente');
+      } else {
+        Alert.alert('Error', result.error || 'No se pudo generar el PDF');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo exportar el historial');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Manejar upgrade desde modal
+  const handleUpgrade = (plan: any) => {
+    setShowUpgradeModal(false);
+    navigation.navigate('Paywall', {
+      source: 'limit',
+      limitType: 'export',
+      preselectedPlan: plan,
+    });
+  };
+
   // Cargar datos al enfocar la pantalla
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [vehicleId])
+      refreshCurrency(); // Recargar moneda cuando la pantalla recibe foco
+    }, [vehicleId, refreshCurrency])
   );
 
   // Filtrar items según tab activo
@@ -160,6 +214,20 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
   };
 
   const stats = calculateStats();
+  const openWorkOrders = workOrders.filter(order => !['delivered', 'cancelled'].includes(order.status)).length;
+
+  const getWorkOrderStatusMeta = (status: WorkOrderStatus) => {
+    const statusMap: Record<WorkOrderStatus, { label: string; color: string }> = {
+      received: { label: 'Recibido', color: Colors.info },
+      diagnosed: { label: 'Diagnosticado', color: Colors.warning },
+      approved: { label: 'Aprobado', color: Colors.primary },
+      in_progress: { label: 'En progreso', color: Colors.primary },
+      completed: { label: 'Completado', color: Colors.success },
+      delivered: { label: 'Entregado', color: Colors.success },
+      cancelled: { label: 'Cancelado', color: Colors.error },
+    };
+    return statusMap[status];
+  };
 
   // Renderizar mantenimiento
   const renderMaintenance = (maintenance: Maintenance) => {
@@ -342,6 +410,27 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
           </View>
         </Card>
 
+        {/* Exportar PDF - Posición destacada */}
+        <Card>
+          <View style={styles.exportHeader}>
+            <Ionicons name="download-outline" size={24} color={Colors.primary} />
+            <Text style={styles.sectionTitle}>Exportar Historial</Text>
+          </View>
+          <Button
+            title={exporting ? "Generando PDF..." : "📄 Exportar a PDF"}
+            icon="download-outline"
+            onPress={handleExportPDF}
+            loading={exporting}
+            disabled={exporting}
+            style={styles.exportButton}
+          />
+          {!hasFeature('canExportPDF') && (
+            <Text style={styles.premiumNote}>
+              ⭐ Función disponible en planes Pro y Premium
+            </Text>
+          )}
+        </Card>
+
         {/* Estadísticas */}
         <Card>
           <Text style={styles.sectionTitle}>Estadísticas</Text>
@@ -361,6 +450,10 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{stats.pendingReminders}</Text>
               <Text style={styles.statLabel}>Recordatorios</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{openWorkOrders}</Text>
+              <Text style={styles.statLabel}>Órdenes Activas</Text>
             </View>
           </View>
         </Card>
@@ -383,7 +476,57 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
               onPress={() => navigation.navigate('AddEditExpense', { vehicleId })}
               style={styles.quickAction}
             />
+            <Button
+              title="Orden"
+              icon="clipboard-outline"
+              variant="outline"
+              onPress={() => navigation.navigate('AddEditWorkOrder', { vehicleId })}
+              style={styles.quickAction}
+            />
           </View>
+        </Card>
+
+        <Card>
+          <View style={styles.workOrderHeader}>
+            <Text style={styles.sectionTitle}>Órdenes de Trabajo</Text>
+            <Button
+              title="Crear orden"
+              size="small"
+              onPress={() => navigation.navigate('AddEditWorkOrder', { vehicleId })}
+            />
+          </View>
+
+          {workOrders.length === 0 ? (
+            <View style={styles.emptyWorkOrders}>
+              <Ionicons name="clipboard-outline" size={32} color={Colors.mediumGray} />
+              <Text style={styles.emptyText}>Aún no hay órdenes para este vehículo.</Text>
+            </View>
+          ) : (
+            workOrders.slice(0, 5).map(order => {
+              const statusMeta = getWorkOrderStatusMeta(order.status);
+              const customer = customers.find(item => item.id === order.customerId);
+              return (
+                <TouchableOpacity
+                  key={order.id}
+                  style={styles.workOrderItem}
+                  onPress={() => navigation.navigate('AddEditWorkOrder', { vehicleId, workOrderId: order.id })}
+                >
+                  <View style={styles.workOrderMain}>
+                    <Text style={styles.workOrderTitle} numberOfLines={1}>{order.complaint}</Text>
+                    <Text style={styles.workOrderSubtext}>
+                      {customer?.name || 'Sin cliente'} • {formatDate(order.openedAt)}
+                    </Text>
+                  </View>
+                  <View style={styles.workOrderStatus}>
+                    <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
+                    <Text style={[styles.workOrderStatusText, { color: statusMeta.color }]}>
+                      {statusMeta.label}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </Card>
 
         {/* Tabs de historial */}
@@ -415,6 +558,13 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
           </View>
         </Card>
       </ScrollView>
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={handleUpgrade}
+        limitType="export"
+      />
     </View>
   );
 };
@@ -501,11 +651,59 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    marginHorizontal: -Theme.spacing.xs,
   },
   quickAction: {
-    flex: 1,
+    width: '31%',
     marginHorizontal: Theme.spacing.xs,
+    marginBottom: Theme.spacing.sm,
+  },
+  workOrderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.sm,
+  },
+  emptyWorkOrders: {
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.lg,
+  },
+  workOrderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  workOrderMain: {
+    flex: 1,
+    marginRight: Theme.spacing.md,
+  },
+  workOrderTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  workOrderSubtext: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+    marginTop: Theme.spacing.xs,
+  },
+  workOrderStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: Theme.spacing.xs,
+  },
+  workOrderStatusText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: '600',
   },
   historyCard: {
     marginBottom: Theme.spacing.xl,
@@ -608,6 +806,22 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: Theme.spacing.md,
+  },
+  exportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
+  },
+  exportButton: {
+    marginTop: Theme.spacing.sm,
+  },
+  premiumNote: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.warning,
+    textAlign: 'center',
+    marginTop: Theme.spacing.sm,
+    fontStyle: 'italic',
   },
 });
 

@@ -6,7 +6,8 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { Colors, Theme } from '../../constants/Colors';
 import { Expense } from '../../types';
-import { groupByMonth, getMonthName, formatCurrency } from '../../utils/helpers';
+import { groupByMonth, getMonthName } from '../../utils/helpers';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -17,6 +18,8 @@ interface ExpenseChartProps {
 }
 
 const ExpenseChart: React.FC<ExpenseChartProps> = ({ expenses, type, title }) => {
+  const { formatCurrency } = useCurrency();
+  
   // Configuración común de los gráficos
   const chartConfig = {
     backgroundColor: Colors.white,

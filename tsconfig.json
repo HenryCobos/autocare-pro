@@ -1,7 +1,12 @@
 {
-	"extends": "expo/tsconfig.base",
+	"extends": "./node_modules/expo/tsconfig.base.json",
 	"compilerOptions": {
-		"strict": true
+		"strict": true,
+		"jsx": "react-native",
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"moduleResolution": "bundler",
+		"skipLibCheck": true
 	},
 	"include": [
 		"App.tsx",

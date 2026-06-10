@@ -2,11 +2,10 @@
   "expo": {
     "name": "AutoCare Pro",
     "slug": "autocare-pro",
-    "version": "1.0.0",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -18,15 +17,13 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.autocare.pro",
-      "buildNumber": "1.0.0",
       "config": {
-        "googleMobileAdsAppId": "ca-app-pub-4349408589058649~5376604621",
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
         "NSCameraUsageDescription": "Esta aplicación necesita acceso a la cámara para tomar fotos de facturas y mantenimientos.",
         "NSPhotoLibraryUsageDescription": "Esta aplicación necesita acceso a la galería para seleccionar fotos de facturas y mantenimientos.",
-        "NSUserTrackingUsageDescription": "Esta aplicación utiliza identificadores del dispositivo para mostrar anuncios personalizados y medir su rendimiento."
+        "NSUserTrackingUsageDescription": "Usamos tu permiso para medir campañas y mostrarte publicidad más relevante de AutoCare Pro."
       },
       "requireFullScreen": false
     },
@@ -50,19 +47,20 @@
         }
       ],
       [
-        "react-native-google-mobile-ads",
+        "expo-tracking-transparency",
         {
-          "ios_app_id": "ca-app-pub-4349408589058649~5376604621",
-          "android_app_id": "ca-app-pub-4349408589058649~5376604621",
-          "user_tracking_usage_description": "Esta aplicación utiliza datos para mostrar anuncios personalizados."
+          "userTrackingPermission": "Usamos tu permiso para medir campañas y mostrarte publicidad más relevante de AutoCare Pro."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "notification": {
       "icon": "./assets/icon.png",
       "color": "#1E88E5"
     },
     "extra": {
+      "tiktokAppId": "7594619183767879698",
+      "tiktokAppStoreId": "6749963091",
       "eas": {
         "projectId": "4bd7700f-bd3a-4bb2-bfc3-4178a4380082"
       }

@@ -6,7 +6,10 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "TIKTOK_APP_ID": "7594619183767879698"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -15,7 +18,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_ADMOB_TEST_MODE": "true"
+        "TIKTOK_APP_ID": "7594619183767879698"
       }
     },
     "testing": {
@@ -25,16 +28,13 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_ADMOB_TEST_MODE": "true",
-        "EXPO_PUBLIC_ADS_BANNER_ID": "ca-app-pub-4349408589058649/4558346974",
-        "EXPO_PUBLIC_ADS_INTERSTITIAL_ID": "ca-app-pub-4349408589058649/9697594219"
+        "TIKTOK_APP_ID": "7594619183767879698"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_ADS_BANNER_ID": "ca-app-pub-4349408589058649/4558346974",
-        "EXPO_PUBLIC_ADS_INTERSTITIAL_ID": "ca-app-pub-4349408589058649/9697594219"
+        "TIKTOK_APP_ID": "7594619183767879698"
       }
     }
   },

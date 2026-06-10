@@ -12,17 +12,21 @@ import {
   Modal,
   FlatList,
   Platform,
+  KeyboardAvoidingView,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
 import { Colors, Theme } from '../constants/Colors';
 import { Maintenance, Vehicle, MaintenanceType } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import NotificationService from '../services/NotificationService';
 import { generateId, getMaintenanceTypeName, formatDate } from '../utils/helpers';
 import { Reminder } from '../types';
-import { useAds } from '../hooks/useAds';
+import { useTikTok } from '../hooks/useTracking';
 
 // Componentes
 import Input from '../components/common/Input';
@@ -39,9 +43,9 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
   navigation,
   route,
 }) => {
-  const { bumpAction, showInterstitialSmart } = useAds();
-  const { vehicleId, maintenanceId } = route.params || {};
+  const { vehicleId, maintenanceId, prefillNotes } = route.params || {};
   const isEditing = !!maintenanceId;
+  const { trackCustomEvent } = useTikTok();
 
   const [formData, setFormData] = useState({
     vehicleId: vehicleId || '',
@@ -49,7 +53,7 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
     date: new Date(),
     cost: 0,
     kilometers: 0,
-    notes: '',
+    notes: prefillNotes || '',
     photo: '',
     nextDueDate: '',
     nextDueKilometers: 0,
@@ -63,6 +67,7 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
   const [showNextDatePicker, setShowNextDatePicker] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
   // Cargar datos
   useEffect(() => {
@@ -171,6 +176,12 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
       };
 
       await AsyncStorageService.saveMaintenance(maintenanceData);
+      await trackCustomEvent(isEditing ? 'maintenance_updated' : 'maintenance_created', {
+        maintenance_id: maintenanceData.id,
+        vehicle_id: maintenanceData.vehicleId,
+        maintenance_type: maintenanceData.type,
+        value: maintenanceData.cost,
+      });
 
       // Crear o actualizar recordatorio automático si hay próximo mantenimiento
       if (formData.nextDueDate && selectedVehicle) {
@@ -218,12 +229,6 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
         await AsyncStorageService.saveVehicle(updatedVehicle);
       }
 
-      // Política de intersticial: incrementar contador y mostrar de forma inteligente
-      try {
-        await bumpAction();
-        setTimeout(() => { showInterstitialSmart(); }, 500);
-      } catch {}
-
       Alert.alert(
         'Éxito',
         `Mantenimiento ${isEditing ? 'actualizado' : 'agregado'} correctamente`,
@@ -237,7 +242,20 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
     }
   };
 
-  // Seleccionar imagen
+  // Mostrar opciones de imagen
+  const showImageOptions = () => {
+    Alert.alert(
+      'Seleccionar Foto',
+      'Elige una opción para la foto de la factura',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Galería', onPress: pickImage },
+        { text: 'Cámara', onPress: takePhoto },
+      ]
+    );
+  };
+
+  // Seleccionar imagen de galería
   const pickImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -260,6 +278,49 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
     } catch (error) {
       console.error('Error picking image:', error);
       Alert.alert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
+  // Tomar foto con cámara
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos para acceder a la cámara');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setFormData(prev => ({ ...prev, photo: result.assets[0].uri }));
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  // Compartir/Descargar foto
+  const sharePhoto = async () => {
+    if (!formData.photo) return;
+
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Error', 'Compartir no está disponible en este dispositivo');
+        return;
+      }
+
+      await Sharing.shareAsync(formData.photo);
+    } catch (error) {
+      console.error('Error sharing photo:', error);
+      Alert.alert('Error', 'No se pudo compartir la foto');
     }
   };
 
@@ -317,7 +378,16 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
       {/* Información del mantenimiento */}
       <Card>
         <Text style={styles.sectionTitle}>Información del Mantenimiento</Text>
@@ -437,20 +507,51 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
       {/* Foto */}
       <Card>
         <Text style={styles.sectionTitle}>Foto de la Factura (Opcional)</Text>
-        <Button
-          title={formData.photo ? 'Cambiar Foto' : 'Agregar Foto'}
-          icon="camera-outline"
-          variant="outline"
-          onPress={pickImage}
-        />
-        {formData.photo && (
+        
+        {formData.photo ? (
+          <>
+            <TouchableOpacity
+              style={styles.photoPreview}
+              onPress={() => setShowPhotoModal(true)}
+            >
+              <Image source={{ uri: formData.photo }} style={styles.photoImage} />
+              <View style={styles.photoOverlay}>
+                <Ionicons name="eye-outline" size={24} color={Colors.white} />
+                <Text style={styles.photoOverlayText}>Toca para ver</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <View style={styles.photoActions}>
+              <Button
+                title="Cambiar Foto"
+                icon="camera-outline"
+                variant="outline"
+                onPress={showImageOptions}
+                style={styles.photoActionButton}
+              />
+              <Button
+                title="Ver/Descargar"
+                icon="share-outline"
+                variant="outline"
+                onPress={sharePhoto}
+                style={styles.photoActionButton}
+              />
+              <Button
+                title="Eliminar"
+                icon="trash-outline"
+                variant="danger"
+                size="small"
+                onPress={() => setFormData(prev => ({ ...prev, photo: '' }))}
+                style={styles.photoActionButton}
+              />
+            </View>
+          </>
+        ) : (
           <Button
-            title="Eliminar Foto"
-            icon="trash-outline"
-            variant="danger"
-            size="small"
-            onPress={() => setFormData(prev => ({ ...prev, photo: '' }))}
-            style={styles.removePhotoButton}
+            title="Agregar Foto"
+            icon="camera-outline"
+            variant="outline"
+            onPress={showImageOptions}
           />
         )}
       </Card>
@@ -558,7 +659,41 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
         onClose={() => setShowNextDatePicker(false)}
         onChange={(date) => setFormData(prev => ({ ...prev, nextDueDate: date.toISOString() }))}
       />
+
+      {/* Modal de visualización de foto */}
+      <Modal
+        visible={showPhotoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhotoModal(false)}
+      >
+        <View style={styles.photoModalContainer}>
+          <TouchableOpacity
+            style={styles.photoModalClose}
+            onPress={() => setShowPhotoModal(false)}
+          >
+            <Ionicons name="close" size={32} color={Colors.white} />
+          </TouchableOpacity>
+          
+          <Image
+            source={{ uri: formData.photo }}
+            style={styles.photoModalImage}
+            resizeMode="contain"
+          />
+          
+          <View style={styles.photoModalActions}>
+            <TouchableOpacity
+              style={styles.photoModalActionButton}
+              onPress={sharePhoto}
+            >
+              <Ionicons name="share-outline" size={24} color={Colors.white} />
+              <Text style={[styles.photoModalActionText, { marginLeft: Theme.spacing.sm }]}>Compartir/Descargar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -621,6 +756,83 @@ const styles = StyleSheet.create({
   removePhotoButton: {
     marginTop: Theme.spacing.sm,
     width: 120,
+  },
+  photoPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: Theme.borderRadius.md,
+    overflow: 'hidden',
+    marginBottom: Theme.spacing.md,
+    backgroundColor: Colors.lightGray,
+    position: 'relative',
+  },
+  photoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: Theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoOverlayText: {
+    color: Colors.white,
+    marginLeft: Theme.spacing.xs,
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
+  },
+  photoActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -Theme.spacing.xs,
+  },
+  photoActionButton: {
+    flex: 1,
+    minWidth: '30%',
+    marginHorizontal: Theme.spacing.xs,
+  },
+  photoModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalClose: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    right: 20,
+    zIndex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  photoModalImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.7,
+  },
+  photoModalActions: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 50 : 30,
+    alignSelf: 'center',
+  },
+  photoModalActionButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  photoModalActionText: {
+    color: Colors.white,
+    fontSize: Theme.fontSize.md,
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',

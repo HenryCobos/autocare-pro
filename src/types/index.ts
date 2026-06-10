@@ -9,7 +9,54 @@ export interface Vehicle {
   year: number;
   currentKilometers: number;
   licensePlate: string;
+  customerId?: string;
   photo?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WorkOrderStatus =
+  | 'received'
+  | 'diagnosed'
+  | 'approved'
+  | 'in_progress'
+  | 'completed'
+  | 'delivered'
+  | 'cancelled';
+
+export interface WorkOrderItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface WorkOrder {
+  id: string;
+  vehicleId: string;
+  customerId?: string;
+  status: WorkOrderStatus;
+  openedAt: string;
+  scheduledAt?: string;
+  closedAt?: string;
+  complaint: string;
+  diagnosis?: string;
+  laborCost: number;
+  partsCost: number;
+  totalCost: number;
+  notes?: string;
+  items: WorkOrderItem[];
   createdAt: string;
   updatedAt: string;
 }
