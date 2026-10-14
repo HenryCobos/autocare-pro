@@ -3,6 +3,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { PurchasesPackage } from 'react-native-purchases';
 import SubscriptionService from '../services/SubscriptionService';
 import {
@@ -58,6 +59,20 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   // Inicializar servicio de suscripciones
   useEffect(() => {
     initializeSubscription();
+  }, []);
+
+  // Refrescar silenciosamente cuando la app vuelve al primer plano
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        SubscriptionService.refreshSubscriptionStatus().then((sub) => {
+          setSubscription(sub);
+        });
+      }
+    };
+
+    const listener = AppState.addEventListener('change', handleAppStateChange);
+    return () => listener.remove();
   }, []);
 
   const initializeSubscription = async () => {

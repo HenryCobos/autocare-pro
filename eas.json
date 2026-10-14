@@ -18,7 +18,8 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "TIKTOK_APP_ID": "7594619183767879698"
+        "TIKTOK_APP_ID": "7594619183767879698",
+        "APP_VARIANT": "internal"
       }
     },
     "testing": {

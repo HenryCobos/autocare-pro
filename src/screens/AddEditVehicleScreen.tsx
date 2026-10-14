@@ -21,7 +21,7 @@ import { Colors, Theme } from '../constants/Colors';
 import { Vehicle, Customer } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import { generateId } from '../utils/helpers';
-import { useTikTok } from '../hooks/useTracking';
+import { useTikTok, TikTokCustomEvent } from '../hooks/useTracking';
 
 // Componentes
 import Input from '../components/common/Input';
@@ -154,10 +154,9 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
       };
 
       await AsyncStorageService.saveVehicle(vehicleData);
-      await trackCustomEvent(isEditing ? 'vehicle_updated' : 'vehicle_created', {
-        vehicle_id: vehicleData.id,
-        has_customer: Boolean(vehicleData.customerId),
-      });
+      if (!isEditing) {
+        await trackCustomEvent(TikTokCustomEvent.ADD_VEHICLE, { content_type: 'vehicle' });
+      }
 
       Alert.alert(
         'Éxito',
@@ -272,12 +271,6 @@ const AddEditVehicleScreen: React.FC<AddEditVehicleScreenProps> = ({
 
       await AsyncStorageService.saveCustomer(customer);
       await loadCustomers();
-      await trackCustomEvent('customer_created', {
-        customer_id: customer.id,
-        has_phone: Boolean(customer.phone),
-        has_email: Boolean(customer.email),
-      });
-
       setCustomerForm({ name: '', phone: '', email: '', notes: '' });
       setShowCreateCustomerModal(false);
       setFormData(prev => ({ ...prev, customerId: customer.id }));

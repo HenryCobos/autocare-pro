@@ -31,7 +31,8 @@ import {
   Currency,
   getCurrencyByCode,
 } from '../constants/currencies';
-import { useTikTok } from '../hooks/useTracking';
+import { useTikTok, TikTokCustomEvent } from '../hooks/useTracking';
+import Constants from 'expo-constants';
 
 // Componentes
 import Card from '../components/common/Card';
@@ -52,6 +53,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   });
   const [loading, setLoading] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+
+  const appVersion = Constants.expoConfig?.version ?? '—';
+  const diagnosticsEnabled = Constants.expoConfig?.extra?.enableDiagnostics === true;
   const supportEmail = 'apper2025@icloud.com';
   const supportWhatsAppNumber = '51994277540';
 
@@ -199,13 +203,12 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setLoading(true);
       const result = await BackupService.exportBackup();
       if (result.success) {
-        await trackCustomEvent('backup_exported');
+        await trackCustomEvent(TikTokCustomEvent.BACKUP_EXPORTED);
         Alert.alert(
           'Respaldo generado',
           'Se abrió el menú para guardar o compartir tu archivo de respaldo.'
         );
       } else {
-        await trackCustomEvent('backup_export_failed', { reason: result.error || 'unknown' });
         Alert.alert('No se pudo crear el respaldo', result.error || 'Intenta nuevamente.');
       }
     } catch (error) {
@@ -233,13 +236,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
               if (result.success) {
                 await loadSettings();
-                await trackCustomEvent('backup_restored');
                 Alert.alert(
                   'Respaldo restaurado',
                   'Tus datos fueron restaurados correctamente.'
                 );
               } else if (result.error !== 'Selección cancelada.') {
-                await trackCustomEvent('backup_restore_failed', { reason: result.error || 'unknown' });
                 Alert.alert('No se pudo restaurar', result.error || 'Intenta con otro archivo.');
               }
             } catch (error) {
@@ -305,7 +306,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     );
     const mailtoUrl = `mailto:${supportEmail}?subject=${subject}&body=${body}`;
 
-    await trackCustomEvent('support_contact_email');
+    await trackCustomEvent(TikTokCustomEvent.CONTACT_SUPPORT, { content_id: 'email' });
     await openExternalLink(
       mailtoUrl,
       `No se pudo abrir la app de correo. Escríbenos a ${supportEmail}.`
@@ -319,7 +320,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     );
     const whatsappUrl = `https://wa.me/${supportWhatsAppNumber}?text=${message}`;
 
-    await trackCustomEvent('support_contact_whatsapp');
+    await trackCustomEvent(TikTokCustomEvent.CONTACT_SUPPORT, { content_id: 'whatsapp' });
     await openExternalLink(
       whatsappUrl,
       `No se pudo abrir WhatsApp. Puedes escribir al +${supportWhatsAppNumber}.`
@@ -476,6 +477,23 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         )}
       </Card>
 
+      {diagnosticsEnabled && (
+        <Card>
+          <Text style={styles.sectionTitle}>Build interno</Text>
+          {renderSettingItem(
+            'pulse-outline',
+            'Diagnóstico TikTok',
+            'Verificar SDK y enviar evento de prueba',
+            () => navigation.navigate('TikTokDiagnostics')
+          )}
+        </Card>
+      )}
+
+      {/* Versión de la app */}
+      <View style={styles.versionContainer}>
+        <Text style={styles.versionText}>AutoCare Pro v{appVersion}</Text>
+      </View>
+
       {/* Espaciado inferior */}
       <View style={styles.bottomSpacing} />
 
@@ -562,6 +580,14 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: Theme.spacing.xl,
+  },
+  versionContainer: {
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.md,
+  },
+  versionText: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textLight,
   },
   subscriptionHeader: {
     flexDirection: 'row',

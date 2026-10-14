@@ -32,15 +32,16 @@ export default function App() {
 
   // Inicializar notificaciones
   useNotifications();
-  const { canTrack, advertisingId } = useTrackingTransparency();
+  const { canTrack, status: attStatus, isLoading: attLoading } = useTrackingTransparency();
+  const trackingResolved = !attLoading && attStatus !== 'undetermined';
 
   useEffect(() => {
-    TikTokAnalyticsService.setTrackingAuthorization(canTrack, advertisingId);
-  }, [canTrack, advertisingId]);
+    TikTokAnalyticsService.setTrackingAuthorization(canTrack);
+  }, [canTrack]);
 
   return (
     <SafeAreaProvider>
-      <TikTokProvider>
+      <TikTokProvider trackingResolved={trackingResolved}>
         <SubscriptionProvider>
           <View style={styles.container}>
             <StatusBar style="light" backgroundColor={Colors.primary} />

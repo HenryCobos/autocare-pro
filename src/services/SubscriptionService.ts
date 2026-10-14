@@ -426,6 +426,16 @@ class SubscriptionService {
   }
 
   /**
+   * Indica si alguna suscripción activa está en periodo de prueba gratuita
+   */
+  isTrialPeriod(customerInfo?: CustomerInfo): boolean {
+    if (!customerInfo) return false;
+    return Object.values(customerInfo.entitlements.active).some(
+      (entitlement) => entitlement.periodType === 'TRIAL'
+    );
+  }
+
+  /**
    * Obtener URL de gestión de suscripción
    */
   async getManagementURL(): Promise<string | null> {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "AutoCare Pro",
     "slug": "autocare-pro",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -52,7 +52,18 @@
           "userTrackingPermission": "Usamos tu permiso para medir campañas y mostrarte publicidad más relevante de AutoCare Pro."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "./plugins/withTiktokBusiness.js",
+        {
+          "ios": {
+            "tiktokAppId": "7594619183767879698"
+          },
+          "android": {
+            "tiktokAppId": "7594619183767879698"
+          }
+        }
+      ]
     ],
     "notification": {
       "icon": "./assets/icon.png",

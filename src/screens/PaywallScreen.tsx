@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import { Colors, Theme } from '../constants/Colors';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { useTikTok, TikTokEvent } from '../hooks/useTracking';
+import { useTikTok } from '../hooks/useTracking';
 import SubscriptionService from '../services/SubscriptionService';
 import { PLAN_FEATURES, PLAN_PRICING, SubscriptionPlan, SUBSCRIPTION_PRODUCTS } from '../types/subscription';
 import Button from '../components/common/Button';
@@ -34,7 +34,7 @@ type PaidPlan = SubscriptionPlan.PRO | SubscriptionPlan.PREMIUM;
 
 const PaywallScreen: React.FC<PaywallScreenProps> = ({ navigation, route }) => {
   const { currentPlan, refreshSubscription } = useSubscription();
-  const { trackSubscription, trackViewContent, trackEvent, trackStartTrial } = useTikTok();
+  const { trackViewContent, trackCheckout, trackSubscriptionStarted } = useTikTok();
   const insets = useSafeAreaInsets();
   const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,10 +163,9 @@ const PaywallScreen: React.FC<PaywallScreenProps> = ({ navigation, route }) => {
     loadOfferings();
     
     // Trackear visualización del paywall
-    trackViewContent('paywall', 'subscription_plans', {
-      source,
-      limit_type: limitType,
-      recommended_plan: recommendedPlan,
+    trackViewContent('subscription', 'paywall', {
+      content_name: source ?? 'unknown',
+      content_category: limitType,
     });
   }, []);
 
@@ -305,38 +304,24 @@ const PaywallScreen: React.FC<PaywallScreenProps> = ({ navigation, route }) => {
       setPurchasing(true);
       console.log('🛒 Iniciando compra desde UI:', packageToPurchase.identifier);
 
-      // Trackear checkout al iniciar el flujo (antes de comprar)
-      await trackEvent(TikTokEvent.INITIATE_CHECKOUT, {
-        content_type: 'subscription',
-        content_name: `${selectedPlan}_${selectedPeriod}`,
-        value: packageToPurchase.product.price,
-        currency: packageToPurchase.product.currencyCode,
-      });
+      const productId = packageToPurchase.product.identifier;
+      const price = packageToPurchase.product.price;
+      const currency = packageToPurchase.product.currencyCode;
 
-      // Si es anual, registrar intento de trial
-      if (selectedPeriod === 'yearly') {
-        await trackStartTrial({
-          content_type: 'subscription_trial',
-          content_name: `${selectedPlan}_yearly`,
-        });
-      }
-      
+      await trackCheckout(price, currency, productId);
+
       const result = await SubscriptionService.purchasePackage(packageToPurchase);
 
       if (result.success) {
         console.log('✅ Compra completada exitosamente');
         await refreshSubscription();
-        
-        // Trackear la suscripción en TikTok
-        const planType = selectedPlan === SubscriptionPlan.PRO ? 'pro' : 'premium';
-        const price = packageToPurchase.product.price;
-        const currency = packageToPurchase.product.currencyCode;
-        
-        await trackSubscription(
-          selectedPeriod === 'monthly' ? 'monthly' : 'annual',
-          price,
-          currency
-        );
+
+        await trackSubscriptionStarted({
+          isTrial: SubscriptionService.isTrialPeriod(result.customerInfo),
+          value: price,
+          currency,
+          contentId: productId,
+        });
         
         Alert.alert(
           '¡Bienvenido! 🎉',

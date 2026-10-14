@@ -100,5 +100,8 @@ export const useTrackingTransparency = () => {
  * Re-exporta el hook de TikTok para facilitar su uso
  */
 export { useTikTok } from '../contexts/TikTokContext';
-export { TikTokEvent } from '../services/TikTokAnalyticsService';
-export { TikTokAnalyticsService } from '../services/TikTokAnalyticsService';
+export {
+  TikTokEvent,
+  TikTokCustomEvent,
+  TikTokAnalyticsService,
+} from '../services/TikTokAnalyticsService';

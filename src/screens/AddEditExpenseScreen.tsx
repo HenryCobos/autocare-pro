@@ -24,7 +24,7 @@ import { Colors, Theme } from '../constants/Colors';
 import { Expense, Vehicle, ExpenseType } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import { generateId, getExpenseTypeName, formatDate } from '../utils/helpers';
-import { useTikTok } from '../hooks/useTracking';
+import { useTikTok, TikTokCustomEvent } from '../hooks/useTracking';
 
 // Componentes
 import Input from '../components/common/Input';
@@ -158,12 +158,12 @@ const AddEditExpenseScreen: React.FC<AddEditExpenseScreenProps> = ({
       };
 
       await AsyncStorageService.saveExpense(expenseData);
-      await trackCustomEvent(isEditing ? 'expense_updated' : 'expense_created', {
-        expense_id: expenseData.id,
-        vehicle_id: expenseData.vehicleId,
-        expense_type: expenseData.type,
-        value: expenseData.amount,
-      });
+      if (!isEditing) {
+        await trackCustomEvent(TikTokCustomEvent.ADD_EXPENSE, {
+          content_type: 'expense',
+          content_category: expenseData.type,
+        });
+      }
       Alert.alert(
         'Éxito',
         `Gasto ${isEditing ? 'actualizado' : 'agregado'} correctamente`,

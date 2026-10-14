@@ -26,7 +26,7 @@ import AsyncStorageService from '../services/AsyncStorageService';
 import NotificationService from '../services/NotificationService';
 import { generateId, getMaintenanceTypeName, formatDate } from '../utils/helpers';
 import { Reminder } from '../types';
-import { useTikTok } from '../hooks/useTracking';
+import { useTikTok, TikTokCustomEvent } from '../hooks/useTracking';
 
 // Componentes
 import Input from '../components/common/Input';
@@ -176,12 +176,12 @@ const AddEditMaintenanceScreen: React.FC<AddEditMaintenanceScreenProps> = ({
       };
 
       await AsyncStorageService.saveMaintenance(maintenanceData);
-      await trackCustomEvent(isEditing ? 'maintenance_updated' : 'maintenance_created', {
-        maintenance_id: maintenanceData.id,
-        vehicle_id: maintenanceData.vehicleId,
-        maintenance_type: maintenanceData.type,
-        value: maintenanceData.cost,
-      });
+      if (!isEditing) {
+        await trackCustomEvent(TikTokCustomEvent.ADD_MAINTENANCE, {
+          content_type: 'maintenance',
+          content_category: maintenanceData.type,
+        });
+      }
 
       // Crear o actualizar recordatorio automático si hay próximo mantenimiento
       if (formData.nextDueDate && selectedVehicle) {

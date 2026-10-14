@@ -32,6 +32,7 @@ import {
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useCurrency } from '../hooks/useCurrency';
 import ExportService from '../services/ExportService';
+import { TikTokAnalyticsService, TikTokCustomEvent } from '../services/TikTokAnalyticsService';
 
 // Componentes
 import Card from '../components/common/Card';
@@ -155,6 +156,9 @@ const VehicleHistoryScreen: React.FC<VehicleHistoryScreenProps> = ({
       );
 
       if (result.success) {
+        TikTokAnalyticsService.trackCustomEvent(TikTokCustomEvent.EXPORT_PDF, {
+          content_type: 'vehicle_history',
+        });
         Alert.alert('Éxito', 'PDF generado correctamente');
       } else {
         Alert.alert('Error', result.error || 'No se pudo generar el PDF');

@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Theme } from '../constants/Colors';
+import Constants from 'expo-constants';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { PLAN_FEATURES, SubscriptionPlan } from '../types/subscription';
 import SubscriptionService from '../services/SubscriptionService';
@@ -52,9 +53,17 @@ const SubscriptionManagementScreen: React.FC<SubscriptionManagementScreenProps> 
 
       if (result.success) {
         await refreshSubscription();
-        Alert.alert('Éxito', 'Compras restauradas correctamente');
+        const updated = SubscriptionService.getUserSubscription();
+        if (updated.isActive) {
+          Alert.alert('Éxito', 'Tus compras han sido restauradas correctamente');
+        } else {
+          Alert.alert(
+            'Sin compras previas',
+            'No se encontraron compras activas para restaurar. Si realizaste una compra recientemente, espera unos minutos e intenta de nuevo.'
+          );
+        }
       } else {
-        Alert.alert('Info', 'No se encontraron compras previas');
+        Alert.alert('Error', result.error || 'No se pudieron restaurar las compras');
       }
     } catch (error) {
       Alert.alert('Error', 'No se pudieron restaurar las compras');
@@ -295,7 +304,7 @@ const SubscriptionManagementScreen: React.FC<SubscriptionManagementScreenProps> 
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            AutoCare Pro v1.0.0
+            AutoCare Pro v{Constants.expoConfig?.version ?? '—'}
           </Text>
           <TouchableOpacity onPress={() => Linking.openURL('https://autocarepro.com/terms')}>
             <Text style={styles.footerLink}>Términos y Condiciones</Text>

@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Theme } from '../constants/Colors';
 import AsyncStorageService from '../services/AsyncStorageService';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { useTikTok, TikTokEvent } from '../hooks/useTracking';
+import { useTikTok } from '../hooks/useTracking';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -85,7 +85,7 @@ const ONBOARDING_SLIDES: OnboardingSlide[] = [
 ];
 
 const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation, onComplete }) => {
-  const { trackCompleteTutorial, trackViewContent } = useTikTok();
+  const { trackCompleteTutorial } = useTikTok();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedVehicleCount, setSelectedVehicleCount] = useState<number | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -123,8 +123,8 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation, onCompl
       
       // Trackear completación del tutorial en TikTok
       await trackCompleteTutorial({
-        selected_plan: planType,
-        vehicle_count: selectedVehicleCount,
+        content_id: planType,
+        quantity: selectedVehicleCount ?? undefined,
       });
       
       // Si se seleccionó Pro o Premium, navegar al paywall
@@ -164,8 +164,8 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation, onCompl
     try {
       await AsyncStorageService.setOnboardingCompleted(true);
       await trackCompleteTutorial({
-        selected_plan: recommendedPlan,
-        vehicle_count: selectedVehicleCount,
+        content_id: recommendedPlan,
+        quantity: selectedVehicleCount ?? undefined,
       });
     } catch (error) {
       console.error('Error preparing trial flow from onboarding:', error);

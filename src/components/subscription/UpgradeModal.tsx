@@ -19,6 +19,7 @@ import { Colors, Theme } from '../../constants/Colors';
 import { SubscriptionPlan, PLAN_LIMITS, PLAN_PRICING, SUBSCRIPTION_PRODUCTS } from '../../types/subscription';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import SubscriptionService from '../../services/SubscriptionService';
+import { TikTokAnalyticsService, TikTokCustomEvent } from '../../services/TikTokAnalyticsService';
 import Button from '../common/Button';
 
 interface UpgradeModalProps {
@@ -164,6 +165,10 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   useEffect(() => {
     if (visible) {
       loadOfferings();
+      TikTokAnalyticsService.trackCustomEvent(TikTokCustomEvent.PAYWALL_LIMIT_REACHED, {
+        content_type: 'limit',
+        content_id: limitType,
+      });
     }
   }, [visible]);
 
@@ -205,10 +210,21 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
     try {
       setPurchasingPlan(plan);
+      const price = packageToPurchase.product.price;
+      const currency = packageToPurchase.product.currencyCode;
+
+      await TikTokAnalyticsService.trackCheckout(price, currency, productId);
+
       const result = await SubscriptionService.purchasePackage(packageToPurchase);
 
       if (result.success) {
         await refreshSubscription();
+        await TikTokAnalyticsService.trackSubscriptionStarted({
+          isTrial: SubscriptionService.isTrialPeriod(result.customerInfo),
+          value: price,
+          currency,
+          contentId: productId,
+        });
         onClose();
         Alert.alert(
           '¡Bienvenido! 🎉',

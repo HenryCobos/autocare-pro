@@ -1,384 +1,197 @@
 /**
- * TikTok App Events SDK Service
- * 
- * Este servicio maneja el envío de eventos a TikTok para el seguimiento de campañas de App Promotion.
- * 
- * Documentación oficial: https://ads.tiktok.com/help/article/app-events-sdk
- * 
- * IMPORTANTE: Para usar este servicio necesitas:
- * 1. TikTok App ID (obtener desde TikTok For Business)
- * 2. Configurar el Pixel de TikTok en tu cuenta de TikTok Ads Manager
- * 3. Agregar tu app en TikTok Events Manager
+ * TikTok App Events Service
+ *
+ * Wraps @layers/expo-tiktok-business (native TikTok Business SDK).
+ * Native TikTokConfig parameters on iOS:
+ *   - appId        → Apple App Store numeric ID (6749963091)
+ *   - tiktokAppId  → TikTok App ID from Events Manager
+ *   - accessToken  → App Secret from Events Manager
+ *
+ * The native SDK auto-logs InstallApp, LaunchAPP, 2DRetention and Purchase (StoreKit),
+ * so those are never sent manually.
+ *
+ * Docs: https://business-api.tiktok.com/portal/docs/ios-integration-steps/v1.3
  */
 
-import Constants from 'expo-constants';
-import * as Device from 'expo-device';
-import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import TiktokSDK from '@layers/expo-tiktok-business';
 
-// Tipos de eventos estándar de TikTok
-export enum TikTokEvent {
-  // Eventos del ciclo de vida de la app
-  LAUNCH_APP = 'LaunchApp',
-  INSTALL_APP = 'InstallApp',
-  
-  // Eventos de registro y onboarding
-  COMPLETE_REGISTRATION = 'CompleteRegistration',
-  COMPLETE_TUTORIAL = 'CompleteTutorial',
-  
-  // Eventos de contenido
-  VIEW_CONTENT = 'ViewContent',
-  SEARCH = 'Search',
-  
-  // Eventos de suscripción (críticos para tu app)
-  START_TRIAL = 'StartTrial',
-  SUBSCRIBE = 'Subscribe',
-  
-  // Eventos de compra
-  ADD_TO_CART = 'AddToCart',
-  INITIATE_CHECKOUT = 'InitiateCheckout',
-  PURCHASE = 'Purchase',
-  
-  // Eventos personalizados
-  CUSTOM = 'Custom',
-}
+/** Standard TikTok app event names (not web pixel names). */
+export const TikTokEvent = {
+  LAUNCH_APP: 'LaunchAPP',
+  COMPLETE_TUTORIAL: 'CompleteTutorial',
+  VIEW_CONTENT: 'ViewContent',
+  CHECKOUT: 'Checkout',
+  START_TRIAL: 'StartTrial',
+  SUBSCRIBE: 'Subscribe',
+  SEARCH: 'Search',
+} as const;
 
-interface TikTokEventProperties {
-  content_type?: string;
-  content_id?: string;
-  content_name?: string;
-  currency?: string;
+export type TikTokEventName = (typeof TikTokEvent)[keyof typeof TikTokEvent];
+
+/** Custom events used to build audiences in Ads Manager. */
+export const TikTokCustomEvent = {
+  ADD_VEHICLE: 'AddVehicle',
+  ADD_MAINTENANCE: 'AddMaintenance',
+  ADD_EXPENSE: 'AddExpense',
+  ADD_WORK_ORDER: 'AddWorkOrder',
+  EXPORT_PDF: 'ExportPDF',
+  BACKUP_EXPORTED: 'BackupExported',
+  CONTACT_SUPPORT: 'ContactSupport',
+  PAYWALL_LIMIT_REACHED: 'PaywallLimitReached',
+} as const;
+
+export type TikTokCustomEventName = (typeof TikTokCustomEvent)[keyof typeof TikTokCustomEvent];
+
+// The SDK discards any property key outside this list.
+const STANDARD_PROPERTY_KEYS = [
+  'value',
+  'currency',
+  'content_id',
+  'content_type',
+  'content_name',
+  'content_category',
+  'description',
+  'quantity',
+  'price',
+  'contents',
+  'search_string',
+] as const;
+
+export interface TikTokEventProperties {
   value?: number;
-  description?: string;
+  currency?: string;
+  content_id?: string;
+  content_type?: string;
+  content_name?: string;
   content_category?: string;
-  [key: string]: any;
+  description?: string;
+  quantity?: number;
+  price?: number;
+  contents?: Array<{
+    content_id: string;
+    content_type?: string;
+    content_name?: string;
+    quantity?: number;
+    price?: number;
+  }>;
+  search_string?: string;
 }
 
 interface TikTokConfig {
-  appId: string;
-  appStoreId?: string;
+  tiktokAppId: string;
+  appStoreId: string;
   accessToken?: string;
-  testMode?: boolean;
 }
+
+export interface TikTokDiagnosticsData {
+  isInitialized: boolean;
+  initError: string | null;
+  appId: string | null;
+  appStoreId: string | null;
+  hasAccessToken: boolean;
+  accessTokenLength: number;
+  testMode: boolean;
+  trackingAuthorized: boolean;
+  nativeModuleAvailable: boolean;
+}
+
+export interface TikTokTestEventResult {
+  success: boolean;
+  statusCode: number | null;
+  message: string;
+  responseBody: string | null;
+}
+
+const sanitizeProperties = (properties: TikTokEventProperties = {}): TikTokEventProperties => {
+  const clean: Record<string, unknown> = {};
+  for (const key of STANDARD_PROPERTY_KEYS) {
+    const value = properties[key];
+    if (value !== undefined && value !== null && value !== '') {
+      clean[key] = value;
+    }
+  }
+  return clean as TikTokEventProperties;
+};
 
 class TikTokAnalyticsServiceClass {
   private config: TikTokConfig | null = null;
-  private isInitialized: boolean = false;
-  private eventQueue: Array<{ event: string; properties: TikTokEventProperties; timestamp: number }> = [];
-  private anonymousId: string = '';
-  private trackingAuthorized: boolean = false;
-  private advertisingId: string | null = null;
-  
-  // URL base de la API de TikTok App Events
-  private readonly API_BASE_URL = 'https://business-api.tiktok.com/open_api/v1.3/app/batch/';
-  
-  // Clave para almacenar el ID anónimo
-  private readonly ANONYMOUS_ID_KEY = '@TikTokAnalytics:anonymousId';
-  private readonly FIRST_LAUNCH_KEY = '@TikTokAnalytics:firstLaunch';
+  private isInitialized = false;
+  private initError: string | null = null;
+  private trackingAuthorized = false;
 
-  /**
-   * Inicializa el servicio de TikTok Analytics
-   * @param config Configuración con el App ID de TikTok
-   */
   async initialize(config: TikTokConfig): Promise<void> {
-    try {
-      this.config = {
-        ...config,
-        // Si no hay access token disponible, forzamos modo test para evitar errores silenciosos en runtime.
-        testMode: config.testMode || !config.accessToken,
-      };
-      // Validación en runtime: log seguro (nunca imprimir el token)
-      const tokenStatus = this.config.accessToken
-        ? `present (length ${this.config.accessToken.length})`
-        : 'MISSING';
-      console.log(`[TikTok] Access token at init: ${tokenStatus}; testMode: ${this.config.testMode}`);
+    if (this.isInitialized) return;
 
-      // Generar o recuperar ID anónimo
-      await this.initializeAnonymousId();
-      
-      // Verificar si es el primer lanzamiento
-      const isFirstLaunch = await this.checkFirstLaunch();
-      
-      this.isInitialized = true;
-      
-      console.log('✅ TikTok Analytics inicializado correctamente');
-      
-      // Enviar evento de instalación si es primer lanzamiento
-      if (isFirstLaunch) {
-        await this.trackEvent(TikTokEvent.INSTALL_APP, {
-          content_type: 'app_install',
-        });
-      }
-      
-      // Enviar evento de lanzamiento
-      await this.trackEvent(TikTokEvent.LAUNCH_APP, {
-        content_type: 'app_launch',
-      });
-      
-      // Procesar eventos en cola
-      await this.flushEventQueue();
-      
-    } catch (error) {
-      console.error('❌ Error al inicializar TikTok Analytics:', error);
+    this.config = config;
+    this.initError = null;
+
+    if (__DEV__) {
+      this.initError = 'Modo desarrollo (__DEV__): el SDK no se inicializa.';
+      console.log('[TikTok] ' + this.initError);
+      return;
     }
-  }
-
-  /**
-   * Inicializa o recupera el ID anónimo del usuario
-   */
-  private async initializeAnonymousId(): Promise<void> {
-    try {
-      let storedId = await AsyncStorage.getItem(this.ANONYMOUS_ID_KEY);
-      
-      if (!storedId) {
-        // Generar nuevo ID anónimo
-        storedId = this.generateAnonymousId();
-        await AsyncStorage.setItem(this.ANONYMOUS_ID_KEY, storedId);
-      }
-      
-      this.anonymousId = storedId;
-    } catch (error) {
-      console.error('Error al inicializar ID anónimo:', error);
-      this.anonymousId = this.generateAnonymousId();
+    if (!config.accessToken) {
+      this.initError = 'App Secret ausente: el build no tiene TIKTOK_ACCESS_TOKEN.';
+      console.warn('[TikTok] ' + this.initError);
+      return;
     }
-  }
-
-  /**
-   * Genera un ID anónimo único
-   */
-  private generateAnonymousId(): string {
-    return `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Verifica si es el primer lanzamiento de la app
-   */
-  private async checkFirstLaunch(): Promise<boolean> {
-    try {
-      const hasLaunched = await AsyncStorage.getItem(this.FIRST_LAUNCH_KEY);
-      
-      if (!hasLaunched) {
-        await AsyncStorage.setItem(this.FIRST_LAUNCH_KEY, 'true');
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('Error al verificar primer lanzamiento:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Rastrea un evento en TikTok
-   * @param eventName Nombre del evento (usar TikTokEvent enum)
-   * @param properties Propiedades adicionales del evento
-   */
-  async trackEvent(
-    eventName: TikTokEvent | string,
-    properties: TikTokEventProperties = {}
-  ): Promise<void> {
-    if (!this.isInitialized || !this.config) {
-      // Agregar a la cola si no está inicializado
-      this.eventQueue.push({
-        event: eventName,
-        properties,
-        timestamp: Date.now(),
-      });
+    if (!config.appStoreId) {
+      this.initError = 'App Store ID ausente: es obligatorio como appId del SDK.';
+      console.warn('[TikTok] ' + this.initError);
       return;
     }
 
     try {
-      const eventData = await this.buildEventData(eventName, properties);
-      
-      if (this.config.testMode) {
-        console.log('🧪 [TikTok Test Mode] Evento:', eventName, eventData);
+      const result = await TiktokSDK.initialize(config.appStoreId, config.tiktokAppId, {
+        accessToken: config.accessToken,
+        debugMode: false,
+        // The native SDK already logs InstallApp/LaunchAPP; this flag only controls
+        // an extra non-standard "Launch" event fired by the Expo wrapper.
+        autoTrackAppLifecycle: false,
+        autoTrackRouteChanges: false,
+      });
+
+      if (result === false) {
+        this.initError = 'TiktokSDK.initialize() retornó false.';
+        console.error('[TikTok] ' + this.initError);
         return;
       }
 
-      // Enviar evento a TikTok
-      await this.sendEventToTikTok(eventData);
-      
-      console.log('✅ Evento de TikTok enviado:', eventName);
-    } catch (error) {
-      console.error('❌ Error al enviar evento a TikTok:', error);
+      this.isInitialized = true;
+      console.log('✅ TikTok SDK inicializado');
+    } catch (error: any) {
+      this.initError = error?.message ?? String(error);
+      console.error('❌ Error al inicializar TikTok SDK:', this.initError);
     }
   }
 
-  /**
-   * Construye los datos del evento con información del dispositivo
-   */
-  private async buildEventData(
-    eventName: string,
-    properties: TikTokEventProperties
-  ): Promise<any> {
-    const timestamp = Math.floor(Date.now() / 1000); // Unix timestamp en segundos
-    
-    return {
-      event: eventName,
-      timestamp,
-      context: {
-        ad: {
-          callback: 'https://example.com', // Opcional: URL de callback
-        },
-        app: {
-          name: Constants.expoConfig?.name || 'AutoCare Pro',
-          namespace: Platform.select({
-            ios: Constants.expoConfig?.ios?.bundleIdentifier,
-            android: Constants.expoConfig?.android?.package,
-          }),
-          version: Constants.expoConfig?.version || '1.0.0',
-          build: Constants.expoConfig?.version || '1.0.0',
-        },
-        device: {
-          id: this.anonymousId,
-          manufacturer: Device.manufacturer || 'Unknown',
-          model: Device.modelName || 'Unknown',
-          platform: Platform.OS,
-          platform_version: Platform.Version.toString(),
-          advertising_id: this.trackingAuthorized ? this.advertisingId || '' : '',
-        },
-        ip: '', // Se captura automáticamente por TikTok
-        locale: 'es', // Puedes obtenerlo de Device
-        network: {
-          wifi: true, // Puedes obtenerlo de NetInfo si lo necesitas
-        },
-        os: {
-          name: Platform.OS,
-          version: Platform.Version.toString(),
-        },
-        screen: {
-          density: 2, // Puedes obtenerlo de Dimensions
-          width: 375, // Puedes obtenerlo de Dimensions
-          height: 812, // Puedes obtenerlo de Dimensions
-        },
-      },
-      properties: {
-        ...properties,
-        _app_id: this.config?.appId,
-        _app_store_id: this.config?.appStoreId,
-      },
-    };
-  }
-
-  /**
-   * Envía el evento a la API de TikTok
-   */
-  private async sendEventToTikTok(eventData: any): Promise<void> {
-    if (!this.config || !this.config.appId) {
-      throw new Error('TikTok no está configurado correctamente');
-    }
+  async trackEvent(
+    eventName: TikTokEventName | TikTokCustomEventName,
+    properties: TikTokEventProperties = {}
+  ): Promise<boolean> {
+    if (!this.isInitialized) return false;
 
     try {
-      const response = await fetch(this.API_BASE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Token': this.config.accessToken || '',
-        },
-        body: JSON.stringify({
-          app_id: this.config.appId,
-          batch: [eventData],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`TikTok API error: ${response.status} - ${errorText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.code !== 0) {
-        throw new Error(`TikTok API returned error code: ${result.code} - ${result.message}`);
-      }
+      const dispatched = await TiktokSDK.trackEvent(eventName, sanitizeProperties(properties));
+      return dispatched;
     } catch (error) {
-      console.error('Error al enviar evento a TikTok:', error);
-      throw error;
+      console.error(`❌ Error al enviar evento TikTok ${eventName}:`, error);
+      return false;
     }
   }
 
-  /**
-   * Procesa eventos en cola que se enviaron antes de la inicialización
-   */
-  private async flushEventQueue(): Promise<void> {
-    if (this.eventQueue.length === 0) return;
-
-    console.log(`📤 Procesando ${this.eventQueue.length} eventos en cola...`);
-
-    const queueCopy = [...this.eventQueue];
-    this.eventQueue = [];
-
-    for (const item of queueCopy) {
-      await this.trackEvent(item.event, item.properties);
-    }
-  }
-
-  /**
-   * Rastrea eventos de suscripción
-   */
-  async trackSubscription(planType: 'monthly' | 'annual', value: number, currency: string = 'USD'): Promise<void> {
-    await this.trackEvent(TikTokEvent.SUBSCRIBE, {
-      content_type: 'subscription',
-      content_name: planType === 'monthly' ? 'Plan Mensual' : 'Plan Anual',
-      content_id: planType,
-      value,
-      currency,
-      description: `Suscripción ${planType === 'monthly' ? 'mensual' : 'anual'} a AutoCare Pro`,
-    });
-
-    // También enviar como evento de compra
-    await this.trackPurchase(value, currency, {
-      content_type: 'subscription',
-      content_name: planType === 'monthly' ? 'Plan Mensual' : 'Plan Anual',
-    });
-  }
-
-  /**
-   * Rastrea eventos de compra
-   */
-  async trackPurchase(value: number, currency: string = 'USD', properties: TikTokEventProperties = {}): Promise<void> {
-    await this.trackEvent(TikTokEvent.PURCHASE, {
-      ...properties,
-      value,
-      currency,
-    });
-  }
-
-  /**
-   * Rastrea eventos de inicio de prueba
-   */
-  async trackStartTrial(properties: TikTokEventProperties = {}): Promise<void> {
-    await this.trackEvent(TikTokEvent.START_TRIAL, {
-      content_type: 'trial',
-      ...properties,
-    });
-  }
-
-  /**
-   * Rastrea completación de registro
-   */
-  async trackCompleteRegistration(properties: TikTokEventProperties = {}): Promise<void> {
-    await this.trackEvent(TikTokEvent.COMPLETE_REGISTRATION, {
-      content_type: 'registration',
-      ...properties,
-    });
-  }
-
-  /**
-   * Rastrea completación del tutorial/onboarding
-   */
   async trackCompleteTutorial(properties: TikTokEventProperties = {}): Promise<void> {
     await this.trackEvent(TikTokEvent.COMPLETE_TUTORIAL, {
-      content_type: 'tutorial',
+      content_type: 'onboarding',
       ...properties,
     });
   }
 
-  /**
-   * Rastrea visualización de contenido
-   */
-  async trackViewContent(contentType: string, contentId: string, properties: TikTokEventProperties = {}): Promise<void> {
+  async trackViewContent(
+    contentType: string,
+    contentId: string,
+    properties: TikTokEventProperties = {}
+  ): Promise<void> {
     await this.trackEvent(TikTokEvent.VIEW_CONTENT, {
       content_type: contentType,
       content_id: contentId,
@@ -386,39 +199,88 @@ class TikTokAnalyticsServiceClass {
     });
   }
 
-  /**
-   * Rastrea un evento custom con nombre de negocio.
-   */
-  async trackCustomEvent(eventName: string, properties: TikTokEventProperties = {}): Promise<void> {
-    await this.trackEvent(TikTokEvent.CUSTOM, {
-      event_name: eventName,
-      ...properties,
+  async trackCheckout(value: number, currency: string, contentId: string): Promise<void> {
+    await this.trackEvent(TikTokEvent.CHECKOUT, {
+      content_type: 'subscription',
+      content_id: contentId,
+      value,
+      currency,
     });
   }
 
   /**
-   * Actualiza el estado de autorización ATT/IDFA para enriquecer eventos.
+   * Call only after a successful purchase. Purchase itself is auto-logged by the SDK.
    */
-  setTrackingAuthorization(canTrack: boolean, advertisingId?: string | null): void {
-    this.trackingAuthorized = canTrack;
-    this.advertisingId = canTrack ? advertisingId || null : null;
+  async trackSubscriptionStarted(params: {
+    isTrial: boolean;
+    value: number;
+    currency: string;
+    contentId: string;
+  }): Promise<void> {
+    await this.trackEvent(params.isTrial ? TikTokEvent.START_TRIAL : TikTokEvent.SUBSCRIBE, {
+      content_type: 'subscription',
+      content_id: params.contentId,
+      value: params.value,
+      currency: params.currency,
+    });
   }
 
-  /**
-   * Verifica si el servicio está inicializado
-   */
+  async trackCustomEvent(
+    eventName: TikTokCustomEventName,
+    properties: TikTokEventProperties = {}
+  ): Promise<void> {
+    await this.trackEvent(eventName, properties);
+  }
+
+  setTrackingAuthorization(canTrack: boolean): void {
+    this.trackingAuthorized = canTrack;
+  }
+
   isReady(): boolean {
     return this.isInitialized;
   }
 
-  /**
-   * Obtiene el ID anónimo actual
-   */
-  getAnonymousId(): string {
-    return this.anonymousId;
+  /** Never exposes the App Secret value. */
+  getDiagnostics(): TikTokDiagnosticsData {
+    return {
+      isInitialized: this.isInitialized,
+      initError: this.initError,
+      appId: this.config?.tiktokAppId ?? null,
+      appStoreId: this.config?.appStoreId ?? null,
+      hasAccessToken: !!this.config?.accessToken,
+      accessTokenLength: this.config?.accessToken?.length ?? 0,
+      testMode: __DEV__,
+      trackingAuthorized: this.trackingAuthorized,
+      nativeModuleAvailable: typeof TiktokSDK?.initialize === 'function',
+    };
+  }
+
+  /** Sends a real LaunchAPP event. Used only from the internal diagnostics screen. */
+  async sendTestEventDirect(): Promise<TikTokTestEventResult> {
+    if (!this.isInitialized) {
+      return {
+        success: false,
+        statusCode: null,
+        message: `SDK no inicializado. ${this.initError ?? 'Verifica App ID, App Store ID y App Secret.'}`,
+        responseBody: this.initError,
+      };
+    }
+
+    const dispatched = await this.trackEvent(TikTokEvent.LAUNCH_APP);
+    return dispatched
+      ? {
+          success: true,
+          statusCode: null,
+          message: 'Evento LaunchAPP enviado via SDK nativo. TikTok lo procesa en segundo plano.',
+          responseBody: 'dispatched: true',
+        }
+      : {
+          success: false,
+          statusCode: null,
+          message: 'El SDK no despachó el evento. Revisa los logs nativos.',
+          responseBody: 'dispatched: false',
+        };
   }
 }
 
-// Exportar instancia singleton
 export const TikTokAnalyticsService = new TikTokAnalyticsServiceClass();
-

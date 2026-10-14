@@ -26,6 +26,10 @@ import SettingsScreen from '../screens/SettingsScreen';
 import PaywallScreen from '../screens/PaywallScreen';
 import SubscriptionManagementScreen from '../screens/SubscriptionManagementScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import TikTokDiagnosticsScreen from '../screens/TikTokDiagnosticsScreen';
+import Constants from 'expo-constants';
+
+export const DIAGNOSTICS_ENABLED = Constants.expoConfig?.extra?.enableDiagnostics === true;
 
 // Tipos de navegación
 export type RootStackParamList = {
@@ -38,6 +42,7 @@ export type RootStackParamList = {
   AddEditWorkOrder: { vehicleId?: string; workOrderId?: string };
   Paywall: { source?: 'limit' | 'settings' | 'onboarding'; limitType?: string; recommendedPlan?: string };
   SubscriptionManagement: undefined;
+  TikTokDiagnostics: undefined;
 };
 
 export type MainTabParamList = {
@@ -284,6 +289,16 @@ const AppNavigator: React.FC = () => {
             headerShown: false,
           }}
         />
+        {DIAGNOSTICS_ENABLED && (
+          <Stack.Screen
+            name="TikTokDiagnostics"
+            component={TikTokDiagnosticsScreen}
+            options={{
+              title: 'Diagnóstico TikTok',
+              headerBackTitle: 'Atrás',
+            }}
+          />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

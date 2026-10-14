@@ -19,7 +19,7 @@ import { Colors, Theme } from '../constants/Colors';
 import { Customer, Vehicle, WorkOrder, WorkOrderStatus } from '../types';
 import AsyncStorageService from '../services/AsyncStorageService';
 import { formatDate, generateId } from '../utils/helpers';
-import { useTikTok } from '../hooks/useTracking';
+import { useTikTok, TikTokCustomEvent } from '../hooks/useTracking';
 
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -180,13 +180,12 @@ const AddEditWorkOrderScreen: React.FC<AddEditWorkOrderScreenProps> = ({ navigat
       };
 
       await AsyncStorageService.saveWorkOrder(payload);
-      await trackCustomEvent(isEditing ? 'work_order_updated' : 'work_order_created', {
-        work_order_id: payload.id,
-        vehicle_id: payload.vehicleId,
-        customer_id: payload.customerId || null,
-        status: payload.status,
-        value: payload.totalCost,
-      });
+      if (!isEditing) {
+        await trackCustomEvent(TikTokCustomEvent.ADD_WORK_ORDER, {
+          content_type: 'work_order',
+          content_category: payload.status,
+        });
+      }
       Alert.alert('Éxito', `Orden ${isEditing ? 'actualizada' : 'creada'} correctamente.`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -210,9 +209,6 @@ const AddEditWorkOrderScreen: React.FC<AddEditWorkOrderScreenProps> = ({ navigat
           try {
             setLoading(true);
             await AsyncStorageService.deleteWorkOrder(workOrderId);
-            await trackCustomEvent('work_order_deleted', {
-              work_order_id: workOrderId,
-            });
             Alert.alert('Éxito', 'Orden eliminada correctamente.', [
               { text: 'OK', onPress: () => navigation.goBack() },
             ]);
