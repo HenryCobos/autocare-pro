@@ -9,6 +9,7 @@
 ```
 Mejoras en v1.1.3:
 
+• Corrección en la solicitud del permiso de rastreo (App Tracking Transparency)
 • Mejoras de rendimiento y estabilidad
 • Optimizaciones internas para campañas publicitarias
 • Correcciones menores
