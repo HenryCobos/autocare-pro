@@ -1,5 +1,6 @@
 /**
  * Hook de App Tracking Transparency (ATT) para iOS.
+ * La solicitud del diálogo se hace desde AttTrackingGate (app activa + UI lista).
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -9,13 +10,31 @@ import {
   requestTrackingPermissionsAsync,
 } from 'expo-tracking-transparency';
 
+export type TrackingPermissionStatus =
+  | 'undetermined'
+  | 'granted'
+  | 'denied'
+  | 'restricted'
+  | 'unavailable'
+  | 'not-applicable';
+
 export const useTrackingTransparency = () => {
-  const [status, setStatus] = useState<string>('undetermined');
+  const [status, setStatus] = useState<TrackingPermissionStatus>('undetermined');
   const [isLoading, setIsLoading] = useState(true);
   const [hasRequested, setHasRequested] = useState(false);
   const [advertisingId, setAdvertisingId] = useState<string | null>(null);
 
-  const readTrackingStatus = useCallback(async () => {
+  const applyPermissionResult = useCallback(async (permissionStatus: string) => {
+    setStatus(permissionStatus as TrackingPermissionStatus);
+    if (permissionStatus === 'granted') {
+      const adId = await getAdvertisingId();
+      setAdvertisingId(adId || null);
+    } else {
+      setAdvertisingId(null);
+    }
+  }, []);
+
+  const refreshTrackingStatus = useCallback(async () => {
     if (Platform.OS !== 'ios') {
       setStatus('not-applicable');
       setIsLoading(false);
@@ -24,14 +43,7 @@ export const useTrackingTransparency = () => {
 
     try {
       const result = await getTrackingPermissionsAsync();
-      setStatus(result.status);
-      const granted = result.status === 'granted';
-      if (granted) {
-        const adId = await getAdvertisingId();
-        setAdvertisingId(adId || null);
-      } else {
-        setAdvertisingId(null);
-      }
+      await applyPermissionResult(result.status);
     } catch (error) {
       console.error('Error leyendo permiso ATT:', error);
       setStatus('unavailable');
@@ -39,66 +51,50 @@ export const useTrackingTransparency = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [applyPermissionResult]);
 
   const requestPermission = useCallback(async () => {
     if (Platform.OS !== 'ios') return;
 
+    setHasRequested(true);
     try {
-      setHasRequested(true);
       const result = await requestTrackingPermissionsAsync();
-      setStatus(result.status);
-
-      if (result.status === 'granted') {
-        const adId = await getAdvertisingId();
-        setAdvertisingId(adId || null);
-      } else {
-        setAdvertisingId(null);
-      }
+      await applyPermissionResult(result.status);
     } catch (error) {
       console.error('Error solicitando permiso ATT:', error);
       setStatus('unavailable');
       setAdvertisingId(null);
     }
-  }, []);
+  }, [applyPermissionResult]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const bootstrap = async () => {
-      await readTrackingStatus();
-      if (!isMounted || Platform.OS !== 'ios') return;
-
-      // Flujo solicitado: pedir permiso al abrir la app si aún no fue decidido.
-      const current = await getTrackingPermissionsAsync();
-      if (current.status === 'undetermined') {
-        await requestPermission();
-      }
-    };
-
-    bootstrap();
-    return () => {
-      isMounted = false;
-    };
-  }, [readTrackingStatus, requestPermission]);
+    refreshTrackingStatus();
+  }, [refreshTrackingStatus]);
 
   const canTrack = status === 'granted';
+
+  /** Listo para mostrar la app y para inicializar TikTok (ATT resuelto o no aplica). */
+  const attFlowComplete =
+    Platform.OS !== 'ios' ||
+    status === 'not-applicable' ||
+    status === 'unavailable' ||
+    status === 'granted' ||
+    status === 'denied' ||
+    status === 'restricted' ||
+    (hasRequested && status !== 'undetermined');
 
   return {
     status,
     isLoading,
     canTrack,
     hasRequested,
+    attFlowComplete,
     advertisingId,
     requestPermission,
+    refreshTrackingStatus,
   };
 };
 
-/**
- * Hook de integración con TikTok Analytics
- * 
- * Re-exporta el hook de TikTok para facilitar su uso
- */
 export { useTikTok } from '../contexts/TikTokContext';
 export {
   TikTokEvent,

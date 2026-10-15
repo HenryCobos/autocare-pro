@@ -8,32 +8,30 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-// Navegación
 import AppNavigator from './src/navigation/AppNavigator';
+import AttTrackingGate from './src/components/AttTrackingGate';
 
-// Hooks
 import { useNotifications } from './src/hooks/useNotifications';
 import { useTrackingTransparency } from './src/hooks/useTracking';
 import { TikTokAnalyticsService } from './src/services/TikTokAnalyticsService';
 
-// Contextos
 import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import { TikTokProvider } from './src/contexts/TikTokContext';
 
-// Colores
 import { Colors } from './src/constants/Colors';
 
 export default function App() {
-  // Ignorar warnings no críticos que podrían cerrar en release si se tratan como errores
   LogBox.ignoreLogs([
     'new NativeEventEmitter',
     'expo-notifications',
   ]);
 
-  // Inicializar notificaciones
   useNotifications();
-  const { canTrack, status: attStatus, isLoading: attLoading } = useTrackingTransparency();
-  const trackingResolved = !attLoading && attStatus !== 'undetermined';
+
+  const tracking = useTrackingTransparency();
+  const { canTrack, attFlowComplete, isLoading: attLoading } = tracking;
+
+  const trackingResolved = !attLoading && attFlowComplete;
 
   useEffect(() => {
     TikTokAnalyticsService.setTrackingAuthorization(canTrack);
@@ -45,7 +43,15 @@ export default function App() {
         <SubscriptionProvider>
           <View style={styles.container}>
             <StatusBar style="light" backgroundColor={Colors.primary} />
-            <AppNavigator />
+            <AttTrackingGate
+              status={tracking.status}
+              isLoading={tracking.isLoading}
+              hasRequested={tracking.hasRequested}
+              attFlowComplete={tracking.attFlowComplete}
+              requestPermission={tracking.requestPermission}
+            >
+              <AppNavigator />
+            </AttTrackingGate>
           </View>
         </SubscriptionProvider>
       </TikTokProvider>
